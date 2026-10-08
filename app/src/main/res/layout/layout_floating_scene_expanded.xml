@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="220dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#E61A1C23"
+    android:padding="12dp"
+    android:elevation="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="SCENE BOT"
+            android:textStyle="bold"
+            android:textColor="#10B981"
+            android:textSize="13sp" />
+        <Button
+            android:id="@+id/btn_minimize"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:text="✕"
+            android:textColor="#9CA3AF" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_current_cards"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Current: A C B"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginTop="6dp" />
+
+    <TextView
+        android:id="@+id/tv_possible_a"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="A -> 45%"
+        android:textColor="#60A5FA"
+        android:textSize="12sp" />
+    <TextView
+        android:id="@+id/tv_possible_b"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="B -> 35%"
+        android:textColor="#F472B6"
+        android:textSize="12sp" />
+    <TextView
+        android:id="@+id/tv_possible_c"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="C -> 20%"
+        android:textColor="#34D399"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/tv_most_likely"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Most Likely: A"
+        android:textColor="#FBBF24"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:layout_marginTop="4dp" />
+    <TextView
+        android:id="@+id/tv_confidence"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Confidence: 78%"
+        android:textColor="#9CA3AF"
+        android:textSize="11sp" />
+    <TextView
+        android:id="@+id/tv_round_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Rounds: 142"
+        android:textColor="#6B7280"
+        android:textSize="11sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+        <Button
+            android:id="@+id/btn_scan"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="36dp"
+            android:text="SCAN"
+            android:textSize="11sp" />
+        <Button
+            android:id="@+id/btn_history"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="36dp"
+            android:text="HIST"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="60dp"
+    android:layout_height="60dp"
+    android:background="@drawable/bg_floating_pill"
+    android:elevation="8dp">
+
+    <TextView
+        android:id="@+id/tv_pill_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:text="SCENE"
+        android:textStyle="bold"
+        android:textSize="12sp"
+        android:textColor="#FFFFFF" />
+</FrameLayout>

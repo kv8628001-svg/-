@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.SceneBot" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+    </style>
+    <style name="Theme.SceneBot.Translucent" parent="Theme.SceneBot">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">#80000000</item>
+    </style>
+</resources>
