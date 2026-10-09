@@ -21,17 +21,20 @@ interface RoundDao {
     @Query("SELECT * FROM rounds ORDER BY roundId DESC LIMIT :limit")
     suspend fun getRecentRounds(limit: Int): List<RoundEntity>
 
+    @Query("SELECT * FROM rounds ORDER BY roundId ASC")
+    suspend fun getAllRoundsChronological(): List<RoundEntity>
+
     @Query("SELECT * FROM rounds ORDER BY roundId DESC")
     fun getAllRoundsFlow(): Flow<List<RoundEntity>>
 
     @Query("SELECT COUNT(*) FROM rounds")
     suspend fun getTotalRoundsCount(): Int
 
-    @Query("SELECT * FROM rounds WHERE fingerprint = :fingerprint ORDER BY roundId DESC LIMIT 1")
+    @Query("SELECT * FROM rounds WHERE fingerprint = :fingerprint LIMIT 1")
     suspend fun findByFingerprint(fingerprint: String): RoundEntity?
 
-    @Query("SELECT * FROM rounds WHERE sequence LIKE '%' || :query || '%' ORDER BY roundId DESC")
-    suspend fun searchRounds(query: String): List<RoundEntity>
+    @Query("SELECT MAX(roundSequenceNumber) FROM rounds")
+    suspend fun getMaxSequenceNumber(): Long?
 
     @Query("DELETE FROM rounds")
     suspend fun clearAllRounds()

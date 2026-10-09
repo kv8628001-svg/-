@@ -10,82 +10,69 @@ import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Handler
-import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.WindowManager
 
 class ScreenCaptureManager(
     private val context: Context,
-    private val resultCode: Int,
-    private val resultData: Intent
+    resultCode: Int,
+    resultData: Intent
 ) {
+    private val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
-    private var screenWidth = 1080
-    private var screenHeight = 2400
-    private var screenDensity = 420
-    private val handler = Handler(Looper.getMainLooper())
+    private var width: Int = 1080
+    private var height: Int = 1920
+    private var density: Int = DisplayMetrics.DENSITY_DEFAULT
 
-    private val projectionCallback = object : MediaProjection.Callback() {
-        override fun onStop() {
-            stop()
-        }
-    }
-
-    fun start() {
+    init {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(metrics)
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
-        screenDensity = metrics.densityDpi
+        width = metrics.widthPixels
+        height = metrics.heightPixels
+        density = metrics.densityDpi
 
-        val projectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
-
-        // Android 14+ requires callback registration before creating virtual display
-        mediaProjection?.registerCallback(projectionCallback, handler)
-
-        imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "SceneBotVirtualDisplay",
-            screenWidth,
-            screenHeight,
-            screenDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            null
-        )
+        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, resultData)
+        setupVirtualDisplay()
     }
 
     @SuppressLint("WrongConstant")
+    private fun setupVirtualDisplay() {
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        virtualDisplay = mediaProjection?.createVirtualDisplay(
+            "SceneBotCapture",
+            width, height, density,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader?.surface,
+            null, null
+        )
+    }
+
     fun acquireLatestScreenshot(): Bitmap? {
-        val image = imageReader?.acquireLatestImage() ?: return null
+        val reader = imageReader ?: return null
+        val image = try {
+            reader.acquireLatestImage() ?: return null
+        } catch (_: Exception) {
+            return null
+        }
+
         return try {
             val planes = image.planes
             val buffer = planes[0].buffer
             val pixelStride = planes[0].pixelStride
             val rowStride = planes[0].rowStride
-            val rowPadding = rowStride - pixelStride * screenWidth
+            val rowPadding = rowStride - pixelStride * width
 
-            val rawBitmap = Bitmap.createBitmap(
-                screenWidth + rowPadding / pixelStride,
-                screenHeight,
+            val bitmap = Bitmap.createBitmap(
+                width + rowPadding / pixelStride,
+                height,
                 Bitmap.Config.ARGB_8888
             )
-            rawBitmap.copyPixelsFromBuffer(buffer)
-
-            if (rowPadding == 0) {
-                rawBitmap
-            } else {
-                val cropped = Bitmap.createBitmap(rawBitmap, 0, 0, screenWidth, screenHeight)
-                rawBitmap.recycle()
-                cropped
-            }
+            bitmap.copyPixelsFromBuffer(buffer)
+            Bitmap.createBitmap(bitmap, 0, 0, width, height)
         } catch (_: Exception) {
             null
         } finally {
@@ -96,12 +83,11 @@ class ScreenCaptureManager(
     fun stop() {
         try {
             virtualDisplay?.release()
-            virtualDisplay = null
             imageReader?.close()
-            imageReader = null
-            mediaProjection?.unregisterCallback(projectionCallback)
             mediaProjection?.stop()
-            mediaProjection = null
         } catch (_: Exception) {}
+        virtualDisplay = null
+        imageReader = null
+        mediaProjection = null
     }
 }

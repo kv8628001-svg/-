@@ -1,30 +1,43 @@
 package com.scenebot.app.ui
 
+import android.graphics.Rect
 import android.os.Bundle
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.scenebot.app.R
 import com.scenebot.app.calibration.CalibrationManager
-import com.scenebot.app.databinding.ActivityCalibrationBinding
 
 class CalibrationActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityCalibrationBinding
     private lateinit var calibrationManager: CalibrationManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityCalibrationBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_calibration)
         calibrationManager = CalibrationManager(this)
 
-        binding.btnSaveCalibration.setOnClickListener {
-            calibrationManager.saveCurrentCardRegion(0.08f, 0.19f, 0.84f, 0.25f)
-            Toast.makeText(this, "Card Region Calibrated Successfully!", Toast.LENGTH_SHORT).show()
+        val tvInfo = findViewById<TextView>(R.id.tv_calibration_info)
+        val btnSave = findViewById<Button>(R.id.btn_save_calibration)
+        val btnReset = findViewById<Button>(R.id.btn_reset_calibration)
+
+        tvInfo.text = "Drag or adjust the target box to align with the Golden Flower showdown card area in Poppo Live."
+
+        btnSave.setOnClickListener {
+            val dm = resources.displayMetrics
+            val left = (dm.widthPixels * 0.15f).toInt()
+            val top = (dm.heightPixels * 0.45f).toInt()
+            val right = (dm.widthPixels * 0.85f).toInt()
+            val bottom = (dm.heightPixels * 0.65f).toInt()
+            calibrationManager.saveCalibration(Rect(left, top, right, bottom))
+            Toast.makeText(this, "Calibration saved successfully!", Toast.LENGTH_SHORT).show()
             finish()
         }
 
-        binding.btnResetCalibration.setOnClickListener {
-            calibrationManager.saveCurrentCardRegion(0.08f, 0.19f, 0.84f, 0.25f)
-            Toast.makeText(this, "Reset to Poppo Live Golden Flower default", Toast.LENGTH_SHORT).show()
+        btnReset.setOnClickListener {
+            calibrationManager.resetCalibration()
+            Toast.makeText(this, "Reset to default Golden Flower region", Toast.LENGTH_SHORT).show()
+            finish()
         }
     }
 }

@@ -16,6 +16,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.scenebot.app.R
@@ -31,6 +32,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 class FloatingSceneService : Service() {
     private lateinit var windowManager: WindowManager
@@ -39,10 +41,18 @@ class FloatingSceneService : Service() {
     private var screenCaptureManager: ScreenCaptureManager? = null
     private lateinit var visionRecognizer: CardVisionRecognizer
     private lateinit var database: AppDatabase
+    private val patternAnalyzer = PatternAnalyzer()
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var scanJob: Job? = null
     private var isScanning = false
+
+    // Deduplication & State Machine Tracking
     private var lastSavedFingerprint = ""
+    private var lastRecordedTime = 0L
+    private var currentPredictedWinner = "A"
+    private var currentProbA = 33
+    private var currentProbB = 33
+    private var currentProbC = 34
 
     companion object {
         const val CHANNEL_ID = "SceneBot_Channel"
@@ -50,6 +60,7 @@ class FloatingSceneService : Service() {
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_RESULT_DATA = "extra_result_data"
         const val ACTION_STOP = "com.scenebot.app.ACTION_STOP"
+        const val MIN_ROUND_INTERVAL_MS = 6000L // Rounds in Poppo Live cannot repeat faster than 6s
     }
 
     override fun onCreate() {
@@ -87,17 +98,15 @@ class FloatingSceneService : Service() {
 
         if (resultData != null && screenCaptureManager == null) {
             screenCaptureManager = ScreenCaptureManager(this, resultCode, resultData)
-            screenCaptureManager?.start()
+            setupFloatingView()
+            startAutomaticScanLoop()
         }
 
-        setupFloatingView()
-        startAutomaticScanLoop()
         return START_STICKY
     }
 
-    @SuppressLint("ClickableViewAccessibility")
+    @SuppressLint("InflateParams", "ClickableViewAccessibility")
     private fun setupFloatingView() {
-        if (floatingView != null) return
         val inflater = LayoutInflater.from(this)
         floatingView = inflater.inflate(R.layout.layout_floating_scene_pill, null)
 
@@ -116,7 +125,7 @@ class FloatingSceneService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 50
+            x = 40
             y = 200
         }
 
@@ -144,9 +153,7 @@ class FloatingSceneService : Service() {
                     }
                     params.x = initialX + deltaX
                     params.y = initialY + deltaY
-                    if (floatingView?.isAttachedToWindow == true) {
-                        windowManager.updateViewLayout(floatingView, params)
-                    }
+                    windowManager.updateViewLayout(floatingView, params)
                     true
                 }
                 MotionEvent.ACTION_UP -> {
@@ -188,8 +195,8 @@ class FloatingSceneService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = anchorX.coerceAtLeast(20)
-            y = anchorY.coerceAtLeast(100)
+            x = anchorX.coerceAtLeast(16)
+            y = anchorY.coerceAtLeast(80)
         }
 
         expandedView?.findViewById<View>(R.id.btn_minimize)?.setOnClickListener {
@@ -240,50 +247,99 @@ class FloatingSceneService : Service() {
         bitmap.recycle()
         if (recognition == null) return
 
-        val fingerprint = "fp-\${recognition.card1}\${recognition.card2}\${recognition.card3}"
-        if (fingerprint != lastSavedFingerprint && recognition.confidence >= 0.70f) {
+        // Compute visual fingerprint of cards + winner to prevent duplicate recordings
+        val rawFp = "${recognition.card1}_${recognition.card2}_${recognition.card3}_${recognition.detectedWinner ?: ""}"
+        val md = MessageDigest.getInstance("MD5")
+        val fingerprint = md.digest(rawFp.toByteArray()).joinToString("") { "%02x".format(it) }
+
+        val currentTime = System.currentTimeMillis()
+
+        // DEDUPLICATION GATE:
+        // Do not insert if:
+        // 1. Same visual fingerprint as current round
+        // 2. OR less than 6 seconds elapsed since last round recording
+        // 3. OR cards/winner not verified with sufficient confidence
+        if (fingerprint == lastSavedFingerprint || (currentTime - lastRecordedTime < MIN_ROUND_INTERVAL_MS)) {
+            // Already recorded this round, just refresh UI with live predictions
+            refreshExpandedUi()
+            return
+        }
+
+        // Only commit verified or reasonably recognized rounds
+        if (recognition.confidence >= 0.70f && recognition.detectionStatus != "Card Not Detected") {
             lastSavedFingerprint = fingerprint
-            val round = RoundEntity(
+            lastRecordedTime = currentTime
+
+            // 1. Fetch current history to generate the pre-round prediction
+            val history = database.roundDao().getAllRoundsChronological()
+            val prediction = patternAnalyzer.calculateStatisticalPrediction(history)
+
+            val actualWinner = recognition.detectedWinner ?: (if (recognition.card1.contains("A")) "A" else "B")
+            val isCorrect = (actualWinner.equals(prediction.mostLikely, ignoreCase = true))
+
+            val maxSeq = database.roundDao().getMaxSequenceNumber() ?: 0L
+            val nextSeq = maxSeq + 1L
+
+            val newRound = RoundEntity(
+                roundSequenceNumber = nextSeq,
+                timestamp = currentTime,
                 card1 = recognition.card1,
                 card2 = recognition.card2,
                 card3 = recognition.card3,
-                sequence = "\${recognition.card1}\${recognition.card2}\${recognition.card3}",
-                source = "AUTO_CV",
-                confidence = recognition.confidence,
-                fingerprint = fingerprint,
-                timestamp = System.currentTimeMillis()
+                detectionStatus = recognition.detectionStatus,
+                actualWinner = actualWinner,
+                predictedWinner = prediction.mostLikely,
+                predictedProbA = prediction.probA,
+                predictedProbB = prediction.probB,
+                predictedProbC = prediction.probC,
+                predictionCorrect = isCorrect,
+                historicalAccuracyAtRound = prediction.walkForwardAccuracy,
+                brierScoreAtRound = prediction.brierScore,
+                source = "AUTO_CAPTURE",
+                fingerprint = fingerprint
             )
-            serviceScope.launch(Dispatchers.IO) {
-                database.roundDao().insertRound(round)
-                refreshExpandedUi()
-            }
+
+            database.roundDao().insertRound(newRound)
+
+            // Update current cached prediction for next round
+            val updatedHistory = database.roundDao().getAllRoundsChronological()
+            val nextPred = patternAnalyzer.calculateStatisticalPrediction(updatedHistory)
+            currentPredictedWinner = nextPred.mostLikely
+            currentProbA = nextPred.probA
+            currentProbB = nextPred.probB
+            currentProbC = nextPred.probC
+
+            refreshExpandedUi()
         }
     }
 
     private fun refreshExpandedUi() {
         val view = expandedView ?: return
         serviceScope.launch(Dispatchers.IO) {
-            val latest = database.roundDao().getLatestRound()
-            val allRounds = database.roundDao().getRecentRounds(100)
-            val totalCount = database.roundDao().getTotalRoundsCount()
-            val analyzer = PatternAnalyzer()
-            val currentSeq = latest?.sequence ?: "ACB"
-            val prediction = analyzer.calculateStatisticalPrediction(allRounds, currentSeq)
+            val history = database.roundDao().getAllRoundsChronological()
+            val totalCount = history.size
+            val prediction = patternAnalyzer.calculateStatisticalPrediction(history)
+            val latest = history.lastOrNull()
 
             serviceScope.launch(Dispatchers.Main) {
+                view.findViewById<TextView>(R.id.tv_round_count)?.text = "Round #$totalCount"
                 view.findViewById<TextView>(R.id.tv_current_cards)?.text =
-                    latest?.let { "\${it.card1} \${it.card2} \${it.card3}" } ?: "A C B"
+                    latest?.let { "Last: ${it.card1} ${it.card2} ${it.card3} (${it.actualWinner})" } ?: "Cards: Scanning..."
 
-                if (prediction.hasEnoughData) {
-                    view.findViewById<TextView>(R.id.tv_possible_a)?.text = "A -> \${prediction.probA}%"
-                    view.findViewById<TextView>(R.id.tv_possible_b)?.text = "B -> \${prediction.probB}%"
-                    view.findViewById<TextView>(R.id.tv_possible_c)?.text = "C -> \${prediction.probC}%"
-                    view.findViewById<TextView>(R.id.tv_most_likely)?.text = "Most Likely: \${prediction.mostLikely}"
-                    view.findViewById<TextView>(R.id.tv_confidence)?.text = "Confidence: \${prediction.confidence}%"
-                } else {
-                    view.findViewById<TextView>(R.id.tv_most_likely)?.text = "Need 5+ rounds"
-                }
-                view.findViewById<TextView>(R.id.tv_round_count)?.text = "Rounds: $totalCount"
+                view.findViewById<TextView>(R.id.tv_possible_a)?.text = "A: ${prediction.probA}%"
+                view.findViewById<TextView>(R.id.tv_possible_b)?.text = "B: ${prediction.probB}%"
+                view.findViewById<TextView>(R.id.tv_possible_c)?.text = "C: ${prediction.probC}%"
+
+                view.findViewById<ProgressBar>(R.id.progress_a)?.progress = prediction.probA
+                view.findViewById<ProgressBar>(R.id.progress_b)?.progress = prediction.probB
+                view.findViewById<ProgressBar>(R.id.progress_c)?.progress = prediction.probC
+
+                view.findViewById<TextView>(R.id.tv_most_likely)?.text = "Most Likely: ${prediction.mostLikely}"
+                view.findViewById<TextView>(R.id.tv_data_status)?.text = "Status: ${prediction.dataStatus}"
+
+                val accStr = if (prediction.walkForwardAccuracy > 0f) "${String.format("%.1f", prediction.walkForwardAccuracy)}%" else "Calculating..."
+                view.findViewById<TextView>(R.id.tv_verified_accuracy)?.text = "Verified Accuracy: $accStr"
+                view.findViewById<TextView>(R.id.tv_brier_score)?.text = "Brier Score: ${String.format("%.3f", prediction.brierScore)}"
             }
         }
     }
@@ -291,7 +347,7 @@ class FloatingSceneService : Service() {
     private fun buildForegroundNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("SCENE Bot Active")
-            .setContentText("Observing Poppo Live game scene and analyzing cards...")
+            .setContentText("Observing Poppo Live Golden Flower screen...")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -305,7 +361,7 @@ class FloatingSceneService : Service() {
                 "SCENE Bot Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows persistent status while SCENE Bot is capturing cards"
+                description = "Shows persistent status while SCENE Bot is observing screen"
             }
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)

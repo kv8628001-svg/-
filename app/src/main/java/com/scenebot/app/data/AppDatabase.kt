@@ -5,23 +5,24 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [RoundEntity::class], version = 1, exportSchema = false)
+@Database(entities = [RoundEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun roundDao(): RoundDao
 
     companion object {
         @Volatile
-        private var INSTANCE: AppDatabase? = null
+        private var instance: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+            return instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "scene_bot_database"
-                ).build()
-                INSTANCE = instance
-                instance
+                    "scene_bot_rounds.db"
+                )
+                .fallbackToDestructiveMigration()
+                .build()
+                .also { instance = it }
             }
         }
     }

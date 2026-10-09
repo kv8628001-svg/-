@@ -29,6 +29,9 @@ jobs:
         gradle wrapper --gradle-version 8.4 --distribution-type bin
         chmod +x gradlew
 
+    - name: Run Automated Unit Tests
+      run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
+
     - name: Build Debug APK
       run: ./gradlew assembleDebug --stacktrace --no-daemon
 

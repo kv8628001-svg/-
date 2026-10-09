@@ -1,50 +1,365 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center"
     android:background="#0F172A">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="SCENE BOT"
-        android:textSize="26sp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF" />
+        android:orientation="vertical"
+        android:padding="16dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Poppo Live Golden Flower Analyzer"
-        android:textSize="13sp"
-        android:textColor="#94A3B8"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="32dp" />
+        <!-- Header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SCENE BOT"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btn_start_bot"
-        android:layout_width="match_parent"
-        android:layout_height="54dp"
-        android:text="@string/start_bot"
-        android:textStyle="bold"
-        android:backgroundTint="#4F46E5" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Poppo Live Golden Flower Real-Time Analysis"
+            android:textColor="#94A3B8"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
 
-    <Button
-        android:id="@+id/btn_stop_bot"
-        android:layout_width="match_parent"
-        android:layout_height="54dp"
-        android:text="@string/stop_bot"
-        android:layout_marginTop="12dp"
-        android:backgroundTint="#DC2626" />
+        <!-- Control Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp">
 
-    <Button
-        android:id="@+id/btn_calibrate_regions"
-        android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:text="@string/calibrate"
-        android:layout_marginTop="12dp"
-        android:backgroundTint="#334155" />
-</LinearLayout>
+            <Button
+                android:id="@+id/btn_start_bot"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="48dp"
+                android:backgroundTint="#4F46E5"
+                android:text="START BOT"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_stop_bot"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="48dp"
+                android:backgroundTint="#EF4444"
+                android:text="STOP BOT"
+                android:textSize="12sp"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_calibrate_regions"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:backgroundTint="#334155"
+            android:text="CALIBRATE GAME REGION"
+            android:textSize="11sp"
+            android:layout_marginTop="8dp" />
+
+        <!-- Real-Time Bayesian Probabilities Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            app:cardBackgroundColor="#1E293B"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="NEXT ROUND PROBABILITIES"
+                        android:textColor="#10B981"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/tv_data_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Insufficient Data"
+                        android:textColor="#F59E0B"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tv_most_likely"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Most Likely: Spot A"
+                    android:textColor="#FBBF24"
+                    android:textStyle="bold"
+                    android:textSize="15sp"
+                    android:layout_marginTop="6dp" />
+
+                <!-- Bar A -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="8dp">
+                    <TextView
+                        android:layout_width="50dp"
+                        android:layout_height="wrap_content"
+                        android:text="Spot A"
+                        android:textColor="#60A5FA"
+                        android:textStyle="bold"
+                        android:textSize="12sp" />
+                    <ProgressBar
+                        android:id="@+id/progress_a"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:max="100"
+                        android:progress="33" />
+                    <TextView
+                        android:id="@+id/tv_prob_a"
+                        android:layout_width="40dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="33%"
+                        android:textColor="#60A5FA"
+                        android:textStyle="bold"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Bar B -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="6dp">
+                    <TextView
+                        android:layout_width="50dp"
+                        android:layout_height="wrap_content"
+                        android:text="Spot B"
+                        android:textColor="#F472B6"
+                        android:textStyle="bold"
+                        android:textSize="12sp" />
+                    <ProgressBar
+                        android:id="@+id/progress_b"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:max="100"
+                        android:progress="33" />
+                    <TextView
+                        android:id="@+id/tv_prob_b"
+                        android:layout_width="40dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="33%"
+                        android:textColor="#F472B6"
+                        android:textStyle="bold"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Bar C -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="6dp">
+                    <TextView
+                        android:layout_width="50dp"
+                        android:layout_height="wrap_content"
+                        android:text="Spot C"
+                        android:textColor="#34D399"
+                        android:textStyle="bold"
+                        android:textSize="12sp" />
+                    <ProgressBar
+                        android:id="@+id/progress_c"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:max="100"
+                        android:progress="34" />
+                    <TextView
+                        android:id="@+id/tv_prob_c"
+                        android:layout_width="40dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="34%"
+                        android:textColor="#34D399"
+                        android:textStyle="bold"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Mathematical Rationale -->
+                <TextView
+                    android:id="@+id/tv_rationale"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Bayesian Dirichlet smoothing over observed rounds"
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Walk-Forward Backtest & Model Diagnostics -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:cardBackgroundColor="#1E293B"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="WALK-FORWARD ACCURACY & DIAGNOSTICS"
+                    android:textColor="#38BDF8"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Verified Accuracy"
+                            android:textColor="#94A3B8"
+                            android:textSize="11sp" />
+                        <TextView
+                            android:id="@+id/tv_verified_accuracy"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="33.3%"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Brier Score (0-2)"
+                            android:textColor="#94A3B8"
+                            android:textSize="11sp" />
+                        <TextView
+                            android:id="@+id/tv_brier_score"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0.667"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tv_baseline_comparison"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Model at Baseline (33.3%) — Statistical independence indicated"
+                    android:textColor="#CBD5E1"
+                    android:textSize="11sp"
+                    android:layout_marginTop="6dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="⚠️ STRICT NOTICE: Golden Flower uses independent RNG rounds. Historical road trends cannot guarantee future outcomes."
+                    android:textColor="#FCD34D"
+                    android:textSize="10sp"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Permanent Round History Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="18dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="PERMANENT ROUND HISTORY"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_total_rounds"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="#10B981"
+                android:textStyle="bold"
+                android:textSize="13sp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btn_clear_history"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:backgroundTint="#475569"
+                android:text="CLEAR"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_simulate_rounds"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:backgroundTint="#0F766E"
+            android:text="+ SIMULATE 15 VERIFIED TEST ROUNDS"
+            android:textSize="11sp"
+            android:layout_marginTop="6dp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_round_history"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:nestedScrollingEnabled="false"
+            android:layout_marginTop="8dp" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

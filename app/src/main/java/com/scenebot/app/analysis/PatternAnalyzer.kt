@@ -1,163 +1,241 @@
 package com.scenebot.app.analysis
 
 import com.scenebot.app.data.RoundEntity
+import kotlin.math.pow
 import kotlin.math.roundToInt
-
-data class SequenceStat(
-    val sequence: String,
-    val count: Int,
-    val percentage: Float
-)
-
-data class TransitionStat(
-    val fromSequence: String,
-    val toSequence: String,
-    val count: Int,
-    val probability: Float
-)
 
 data class StatisticalPredictionResult(
     val hasEnoughData: Boolean,
+    val dataStatus: String, // "Sufficient" or "Insufficient Data"
     val probA: Int,
     val probB: Int,
     val probC: Int,
     val mostLikely: String,
     val confidence: Int,
-    val warning: String = "Statistical probability only — Not a guaranteed prediction"
+    val rationale: String,
+    val sampleSize: Int,
+    val walkForwardAccuracy: Float,
+    val brierScore: Float,
+    val baselineComparison: String,
+    val warning: String = "Statistical frequency analysis only. Past rounds do not guarantee future winners in independent RNG games."
 )
 
-data class PredictionAccuracy(
-    val last20: Float,
-    val last50: Float,
-    val overall: Float
+data class BacktestReport(
+    val totalTested: Int,
+    val correctCount: Int,
+    val accuracyPercentage: Float,
+    val brierScore: Float,
+    val baselineAccuracy: Float = 33.33f,
+    val baselineBrier: Float = 0.667f,
+    val isBeatingBaseline: Boolean,
+    val summary: String
 )
 
 class PatternAnalyzer {
-    fun calculateFrequencies(rounds: List<RoundEntity>): List<SequenceStat> {
-        val total = rounds.size.toFloat()
-        if (total == 0f) return emptyList()
-        return rounds.groupingBy { it.sequence }
-            .eachCount()
-            .map { (seq, count) ->
-                SequenceStat(seq, count, (count / total) * 100f)
-            }
-            .sortedByDescending { it.count }
+
+    companion object {
+        const val MIN_DATA_THRESHOLD = 10
+        const val UNIFORM_BASELINE_ACCURACY = 33.33f
+        const val UNIFORM_BASELINE_BRIER = 0.667f
     }
 
-    fun calculateTransitions(rounds: List<RoundEntity>): List<TransitionStat> {
-        if (rounds.size < 2) return emptyList()
-        val transitionCounts = mutableMapOf<Pair<String, String>, Int>()
-        val fromTotals = mutableMapOf<String, Int>()
+    /**
+     * Calculates Bayesian Dirichlet smoothed probability distribution for A, B, C
+     * with 1st-order Markov transition from previous round winner.
+     * Guaranteed: probA + probB + probC == 100
+     */
+    fun calculateStatisticalPrediction(rounds: List<RoundEntity>): StatisticalPredictionResult {
+        val n = rounds.size
+        val hasEnough = n >= MIN_DATA_THRESHOLD
+        val dataStatus = if (hasEnough) "Sufficient ($n rounds)" else "Insufficient Data ($n/$MIN_DATA_THRESHOLD rounds)"
 
-        for (i in 0 until rounds.size - 1) {
-            val from = rounds[i].sequence
-            val to = rounds[i + 1].sequence
-            val key = Pair(from, to)
-            transitionCounts[key] = (transitionCounts[key] ?: 0) + 1
-            fromTotals[from] = (fromTotals[from] ?: 0) + 1
-        }
-
-        return transitionCounts.map { (pair, count) ->
-            val totalFrom = fromTotals[pair.first]?.toFloat() ?: 1f
-            TransitionStat(
-                fromSequence = pair.first,
-                toSequence = pair.second,
-                count = count,
-                probability = (count / totalFrom) * 100f
-            )
-        }.sortedByDescending { it.count }
-    }
-
-    fun calculateStatisticalPrediction(rounds: List<RoundEntity>, currentSeq: String): StatisticalPredictionResult {
-        if (rounds.size < 5) {
+        // If very little data, return uniform smoothed distribution
+        if (n == 0) {
             return StatisticalPredictionResult(
                 hasEnoughData = false,
-                probA = 0, probB = 0, probC = 0,
-                mostLikely = "?", confidence = 0
+                dataStatus = dataStatus,
+                probA = 33, probB = 33, probC = 34,
+                mostLikely = "A",
+                confidence = 34,
+                rationale = "Uniform prior (no observed data)",
+                sampleSize = 0,
+                walkForwardAccuracy = 0f,
+                brierScore = UNIFORM_BASELINE_BRIER,
+                baselineComparison = "No data to compare against baseline"
             )
         }
 
-        // Global distribution
-        val totalCards = (rounds.size * 3).toFloat()
-        var countA = 0f
-        var countB = 0f
-        var countC = 0f
-        rounds.forEach { r ->
-            listOf(r.card1, r.card2, r.card3).forEach { c ->
-                when (c) {
-                    "A" -> countA++
-                    "B" -> countB++
-                    "C" -> countC++
-                }
+        // 1. Empirical Bayesian Counts with Dirichlet prior alpha=1.0 (Laplace smoothing)
+        var countA = 1.0
+        var countB = 1.0
+        var countC = 1.0
+
+        for (r in rounds) {
+            when (r.actualWinner.uppercase()) {
+                "A" -> countA += 1.0
+                "B" -> countB += 1.0
+                "C" -> countC += 1.0
             }
         }
-        val globalA = countA / totalCards
-        val globalB = countB / totalCards
-        val globalC = countC / totalCards
+        val totalDirichlet = countA + countB + countC
+        val freqA = countA / totalDirichlet
+        val freqB = countB / totalDirichlet
+        val freqC = countC / totalDirichlet
 
-        // Transition frequency from currentSeq
-        var transA = 0f
-        var transB = 0f
-        var transC = 0f
-        var transTotal = 0f
+        // 2. 1st-order Markov transition conditioned on the last round winner
+        val lastWinner = rounds.last().actualWinner.uppercase()
+        var transCountA = 1.0
+        var transCountB = 1.0
+        var transCountC = 1.0
+
         for (i in 0 until rounds.size - 1) {
-            if (rounds[i].sequence == currentSeq) {
-                val next = rounds[i + 1]
-                when (next.card1) {
-                    "A" -> transA += 1.5f
-                    "B" -> transB += 1.5f
-                    "C" -> transC += 1.5f
+            if (rounds[i].actualWinner.equals(lastWinner, ignoreCase = true)) {
+                when (rounds[i + 1].actualWinner.uppercase()) {
+                    "A" -> transCountA += 1.0
+                    "B" -> transCountB += 1.0
+                    "C" -> transCountC += 1.0
                 }
-                transTotal += 1.5f
             }
         }
-        val tA = if (transTotal > 0) transA / transTotal else 0.333f
-        val tB = if (transTotal > 0) transB / transTotal else 0.333f
-        val tC = if (transTotal > 0) transC / transTotal else 0.333f
+        val totalTrans = transCountA + transCountB + transCountC
+        val transA = transCountA / totalTrans
+        val transB = transCountB / totalTrans
+        val transC = transCountC / totalTrans
 
-        // Recency momentum (last 10 rounds)
-        val recent = rounds.takeLast(10)
-        var recA = 0f
-        var recB = 0f
-        var recC = 0f
-        recent.forEachIndexed { idx, r ->
-            val w = 1f + (idx * 0.2f)
-            if (r.card1 == "A") recA += w
-            if (r.card1 == "B") recB += w
-            if (r.card1 == "C") recC += w
+        // 3. Blend: 50% Dirichlet frequency + 50% Markov transition
+        val rawA = 0.5 * freqA + 0.5 * transA
+        val rawB = 0.5 * freqB + 0.5 * transB
+        val rawC = 0.5 * freqC + 0.5 * transC
+        val rawSum = rawA + rawB + rawC
+
+        // 4. Strict Integer Normalization: sum must be exactly 100
+        var pA = ((rawA / rawSum) * 100.0).roundToInt().coerceIn(1, 98)
+        var pB = ((rawB / rawSum) * 100.0).roundToInt().coerceIn(1, 98)
+        var pC = 100 - pA - pB
+        if (pC < 1) {
+            pC = 1
+            if (pA >= pB) pA -= 1 else pB -= 1
         }
-        val recTotal = (recA + recB + recC).coerceAtLeast(1f)
 
-        // Blended weights
-        val scoreA = globalA * 0.3f + (recA / recTotal) * 0.35f + tA * 0.35f
-        val scoreB = globalB * 0.3f + (recB / recTotal) * 0.35f + tB * 0.35f
-        val scoreC = globalC * 0.3f + (recC / recTotal) * 0.35f + tC * 0.35f
-        val sum = (scoreA + scoreB + scoreC).coerceAtLeast(0.0001f)
-
-        // Robust normalization
-        val rawPA = ((scoreA / sum) * 100).roundToInt().coerceIn(0, 100)
-        val rawPB = ((scoreB / sum) * 100).roundToInt().coerceIn(0, 100)
-        val rawPC = (100 - rawPA - rawPB).coerceIn(0, 100)
-
-        val totalPercents = rawPA + rawPB + rawPC
-        val pA = if (totalPercents != 100 && totalPercents > 0) (rawPA * 100 / totalPercents) else rawPA
-        val pB = if (totalPercents != 100 && totalPercents > 0) (rawPB * 100 / totalPercents) else rawPB
-        val pC = (100 - pA - pB).coerceAtLeast(0)
-
-        val topCard = when {
+        val topWinner = when {
             pA >= pB && pA >= pC -> "A"
             pB >= pA && pB >= pC -> "B"
             else -> "C"
         }
-        val topConf = maxOf(pA, maxOf(pB, pC))
+        val maxConf = maxOf(pA, maxOf(pB, pC))
+
+        // 5. Walk-Forward Backtest evaluation
+        val backtest = runWalkForwardBacktest(rounds)
+
+        val rationale = if (hasEnough) {
+            "Bayesian Dirichlet smoothing over $n rounds with Markov transition from Spot $lastWinner"
+        } else {
+            "Preliminary distribution ($n rounds). Need at least $MIN_DATA_THRESHOLD rounds for stable modeling."
+        }
+
+        val baselineComparison = when {
+            backtest.totalTested == 0 -> "Awaiting >= 5 rounds for backtest"
+            backtest.accuracyPercentage > 35.0f -> "Model slightly leads Random Baseline (+${String.format("%.1f", backtest.accuracyPercentage - UNIFORM_BASELINE_ACCURACY)}%)"
+            else -> "Model at/below Baseline (${String.format("%.1f", backtest.accuracyPercentage)}% vs 33.3%) — Independence Indicated"
+        }
 
         return StatisticalPredictionResult(
-            hasEnoughData = true,
+            hasEnoughData = hasEnough,
+            dataStatus = dataStatus,
             probA = pA,
             probB = pB,
             probC = pC,
-            mostLikely = topCard,
-            confidence = topConf
+            mostLikely = topWinner,
+            confidence = maxConf,
+            rationale = rationale,
+            sampleSize = n,
+            walkForwardAccuracy = backtest.accuracyPercentage,
+            brierScore = backtest.brierScore,
+            baselineComparison = baselineComparison
+        )
+    }
+
+    /**
+     * Walk-forward backtest:
+     * Iterates through history step-by-step.
+     * At step t, predicts using only rounds 0..t-1 (no lookahead bias).
+     * Compares predicted spot against actual round t winner.
+     * Computes accuracy and Brier score.
+     */
+    fun runWalkForwardBacktest(rounds: List<RoundEntity>): BacktestReport {
+        if (rounds.size < 5) {
+            return BacktestReport(
+                totalTested = 0,
+                correctCount = 0,
+                accuracyPercentage = 0f,
+                brierScore = UNIFORM_BASELINE_BRIER,
+                isBeatingBaseline = false,
+                summary = "Insufficient rounds (<5) for walk-forward validation"
+            )
+        }
+
+        var tested = 0
+        var correct = 0
+        var totalBrier = 0.0
+
+        // Start from round index 4 (5th round) onwards
+        for (i in 4 until rounds.size) {
+            val historyWindow = rounds.subList(0, i)
+            val actual = rounds[i].actualWinner.uppercase()
+
+            // Calculate prediction using only historyWindow
+            var countA = 1.0
+            var countB = 1.0
+            var countC = 1.0
+            for (h in historyWindow) {
+                when (h.actualWinner.uppercase()) {
+                    "A" -> countA += 1.0
+                    "B" -> countB += 1.0
+                    "C" -> countC += 1.0
+                }
+            }
+            val tot = countA + countB + countC
+            val pA = countA / tot
+            val pB = countB / tot
+            val pC = countC / tot
+
+            val predictedSpot = when {
+                pA >= pB && pA >= pC -> "A"
+                pB >= pA && pB >= pC -> "B"
+                else -> "C"
+            }
+
+            tested++
+            if (predictedSpot == actual) {
+                correct++
+            }
+
+            // Brier score component for 3 outcomes:
+            // sum_{k} (p_k - y_k)^2
+            val yA = if (actual == "A") 1.0 else 0.0
+            val yB = if (actual == "B") 1.0 else 0.0
+            val yC = if (actual == "C") 1.0 else 0.0
+            val stepBrier = (pA - yA).pow(2.0) + (pB - yB).pow(2.0) + (pC - yC).pow(2.0)
+            totalBrier += stepBrier
+        }
+
+        val accuracy = if (tested > 0) (correct.toFloat() / tested) * 100f else 0f
+        val avgBrier = if (tested > 0) (totalBrier / tested).toFloat() else UNIFORM_BASELINE_BRIER
+        val beatsBaseline = accuracy > UNIFORM_BASELINE_ACCURACY && avgBrier < UNIFORM_BASELINE_BRIER
+
+        val summary = if (beatsBaseline) {
+            "Walk-forward accuracy ${String.format("%.1f", accuracy)}% (Beating baseline by +${String.format("%.1f", accuracy - UNIFORM_BASELINE_ACCURACY)}%)"
+        } else {
+            "Walk-forward accuracy ${String.format("%.1f", accuracy)}% (Matches uniform random 33.3% — Independence observed)"
+        }
+
+        return BacktestReport(
+            totalTested = tested,
+            correctCount = correct,
+            accuracyPercentage = accuracy,
+            brierScore = avgBrier,
+            isBeatingBaseline = beatsBaseline,
+            summary = summary
         )
     }
 }

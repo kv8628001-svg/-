@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="60dp"
-    android:layout_height="60dp"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="56dp"
+    android:layout_height="56dp"
     android:background="@drawable/bg_floating_pill"
-    android:elevation="8dp">
+    android:gravity="center"
+    android:orientation="vertical">
 
     <TextView
-        android:id="@+id/tv_pill_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
         android:text="SCENE"
-        android:textStyle="bold"
-        android:textSize="12sp"
-        android:textColor="#FFFFFF" />
-</FrameLayout>
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="BOT"
+        android:textColor="#D1FAE5"
+        android:textSize="9sp" />
+</LinearLayout>
