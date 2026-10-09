@@ -31,7 +31,11 @@ android {
     }
 
     signingConfigs {
-        getByName("debug") {
+        create("release") {
+            storeFile = file("${rootDir}/scenebot-release.jks")
+            storePassword = "scenebot_release_2026"
+            keyAlias = "scenebot"
+            keyPassword = "scenebot_release_2026"
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
@@ -40,9 +44,12 @@ android {
     }
 
     buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("debug")
-            isDebuggable = true
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

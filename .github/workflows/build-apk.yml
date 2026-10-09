@@ -32,21 +32,19 @@ jobs:
     - name: Run Automated Unit Tests
       run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace --no-daemon
+    - name: Build Clean Release and Debug APK
+      run: ./gradlew assembleRelease assembleDebug --stacktrace --no-daemon
 
-    - name: Ensure Dual v1 and v2 Signature
+    - name: Verify Official Release APK Signature
       run: |
-        APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-        keytool -genkeypair -v -keystore scenebot.keystore -alias scenebot -keyalg RSA -keysize 2048 -validity 10000 -storepass scenebot123 -keypass scenebot123 -dname "CN=SceneBot, OU=Android, O=SceneBot, L=Dhaka, S=Dhaka, C=BD"
+        APK_PATH="app/build/outputs/apk/release/app-release.apk"
         APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
         echo "Using apksigner: $APKSIGNER"
-        $APKSIGNER sign --ks scenebot.keystore --ks-pass pass:scenebot123 --ks-key-alias scenebot --key-pass pass:scenebot123 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false --out app/build/outputs/apk/debug/app-debug.apk $APK_PATH
-        $APKSIGNER verify --verbose app/build/outputs/apk/debug/app-debug.apk
+        $APKSIGNER verify --verbose --print-certs $APK_PATH
 
-    - name: Upload Debug APK Artifact
+    - name: Upload Release APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: SceneBot-app-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: SceneBot-app-release-apk
+        path: app/build/outputs/apk/release/app-release.apk
         retention-days: 30
