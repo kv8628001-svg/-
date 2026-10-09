@@ -196,7 +196,9 @@ class FloatingSceneService : Service() {
             toggleExpandedPanel(anchorX, anchorY)
         }
         expandedView?.findViewById<View>(R.id.btn_scan)?.setOnClickListener {
-            performSingleScan()
+            serviceScope.launch(Dispatchers.IO) {
+                performSingleScan()
+            }
         }
         expandedView?.findViewById<View>(R.id.btn_history)?.setOnClickListener {
             val historyIntent = Intent(this, MainActivity::class.java).apply {
@@ -232,7 +234,7 @@ class FloatingSceneService : Service() {
         }
     }
 
-    private fun performSingleScan() {
+    private suspend fun performSingleScan() {
         val bitmap = screenCaptureManager?.acquireLatestScreenshot() ?: return
         val recognition = visionRecognizer.processScreen(bitmap)
         bitmap.recycle()
