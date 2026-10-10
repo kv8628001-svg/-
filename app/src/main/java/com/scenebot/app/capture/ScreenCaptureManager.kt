@@ -22,6 +22,7 @@ class ScreenCaptureManager(
     resultCode: Int,
     resultData: Intent
 ) {
+
     companion object {
         private const val TAG = "ScreenCaptureManager"
     }
@@ -43,9 +44,17 @@ class ScreenCaptureManager(
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
             windowManager.defaultDisplay.getRealMetrics(metrics)
+
             width = metrics.widthPixels
             height = metrics.heightPixels
             density = metrics.densityDpi
+
+            // Cap dimensions to standard 1080p width to optimize memory and ML Kit processing
+            if (width > 1080) {
+                val scale = 1080f / width
+                width = 1080
+                height = (height * scale).toInt()
+            }
 
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, resultData)
 
@@ -61,6 +70,7 @@ class ScreenCaptureManager(
 
             setupVirtualDisplay()
             isInitialized = true
+            Log.i(TAG, "ScreenCaptureManager initialized: ${width}x${height} @ ${density}dpi")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize ScreenCaptureManager: ${e.message}", e)
         }
@@ -96,14 +106,23 @@ class ScreenCaptureManager(
             val rowStride = planes[0].rowStride
             val rowPadding = rowStride - pixelStride * width
 
-            val bitmap = Bitmap.createBitmap(
-                width + rowPadding / pixelStride,
+            val rawWidth = width + rowPadding / pixelStride
+            val intermediate = Bitmap.createBitmap(
+                rawWidth,
                 height,
                 Bitmap.Config.ARGB_8888
             )
-            bitmap.copyPixelsFromBuffer(buffer)
-            Bitmap.createBitmap(bitmap, 0, 0, width, height)
+            intermediate.copyPixelsFromBuffer(buffer)
+
+            if (rowPadding == 0) {
+                intermediate
+            } else {
+                val cropped = Bitmap.createBitmap(intermediate, 0, 0, width, height)
+                intermediate.recycle() // CRITICAL: Recycle intermediate bitmap to prevent memory leak!
+                cropped
+            }
         } catch (e: Exception) {
+            Log.e(TAG, "Error processing screenshot: ${e.message}")
             null
         } finally {
             image.close()

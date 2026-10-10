@@ -1,23 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="56dp"
-    android:layout_height="56dp"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pill_root_container"
+    android:layout_width="60dp"
+    android:layout_height="60dp"
     android:background="@drawable/bg_floating_pill"
-    android:gravity="center"
-    android:orientation="vertical">
+    android:elevation="8dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="SCENE"
-        android:textColor="#FFFFFF"
-        android:textSize="11sp"
-        android:textStyle="bold" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="BOT"
-        android:textColor="#D1FAE5"
-        android:textSize="9sp" />
-</LinearLayout>
+        <TextView
+            android:id="@+id/tv_pill_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SCENE"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_pill_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BOT"
+            android:textColor="#D1FAE5"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+
+        <!-- Live status indicator dot -->
+        <View
+            android:id="@+id/pill_status_dot"
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:layout_marginTop="2dp"
+            android:background="#34D399" />
+    </LinearLayout>
+</FrameLayout>

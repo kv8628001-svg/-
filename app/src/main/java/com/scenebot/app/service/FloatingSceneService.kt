@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -12,6 +13,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -28,6 +30,7 @@ import com.scenebot.app.analysis.PatternAnalyzer
 import com.scenebot.app.capture.ScreenCaptureManager
 import com.scenebot.app.data.AppDatabase
 import com.scenebot.app.data.RoundEntity
+import com.scenebot.app.ui.CalibrationActivity
 import com.scenebot.app.ui.MainActivity
 import com.scenebot.app.vision.CardVisionRecognizer
 import kotlinx.coroutines.CoroutineScope
@@ -61,19 +64,35 @@ class FloatingSceneService : Service() {
     private var scanJob: Job? = null
     private var isScanning = false
 
-    // Deduplication & State Tracking
-    private var lastSavedFingerprint = ""
+    // Game Round State Machine
+    private var isAwaitingNewRoundTransition = false
+    private var lastCommittedFingerprint = ""
     private var lastRecordedTime = 0L
+
+    // Live Predictions for Next Round
     private var currentPredictedWinner = "A"
     private var currentProbA = 33
     private var currentProbB = 33
     private var currentProbC = 34
+
+    // Screen Dimensions for Clamping Overlay
+    private var screenWidth = 1080
+    private var screenHeight = 1920
+    private var density = 2.0f
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         visionRecognizer = CardVisionRecognizer(this)
         database = AppDatabase.getInstance(this)
+
+        val dm = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getMetrics(dm)
+        screenWidth = dm.widthPixels
+        screenHeight = dm.heightPixels
+        density = dm.density
+
         createNotificationChannel()
     }
 
@@ -83,10 +102,18 @@ class FloatingSceneService : Service() {
             return START_NOT_STICKY
         }
 
-        // 1. Promote to Foreground Service immediately
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getParcelableExtra(EXTRA_RESULT_DATA)
+        }
+
+        // 1. Promote to Foreground Service safely with proper type
         val notification = buildForegroundNotification()
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && resultData != null) {
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
@@ -99,20 +126,12 @@ class FloatingSceneService : Service() {
             Log.e(TAG, "startForeground failed: ${e.message}", e)
         }
 
-        // 2. GUARANTEE: Setup floating overlay view immediately
+        // 2. GUARANTEE: Setup floating overlay view immediately over Poppo Live
         if (floatingView == null && Settings.canDrawOverlays(this)) {
             setupFloatingView()
         }
 
         // 3. Initialize ScreenCaptureManager safely if result data is present
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
-        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent?.getParcelableExtra(EXTRA_RESULT_DATA)
-        }
-
         if (resultData != null && screenCaptureManager == null) {
             try {
                 screenCaptureManager = ScreenCaptureManager(this, resultCode, resultData)
@@ -140,16 +159,19 @@ class FloatingSceneService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        val pillSizePx = (60 * density).toInt()
+
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            pillSizePx,
+            pillSizePx,
             layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 40
-            y = 240
+            // Position on right edge, comfortable 35% height from top
+            x = (screenWidth - pillSizePx - (16 * density).toInt()).coerceAtLeast(0)
+            y = (screenHeight * 0.35f).toInt()
         }
 
         var initialX = 0
@@ -166,22 +188,24 @@ class FloatingSceneService : Service() {
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     isClick = true
+                    pillView.alpha = 0.85f
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val deltaX = (event.rawX - initialTouchX).toInt()
                     val deltaY = (event.rawY - initialTouchY).toInt()
-                    if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) {
+                    if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
                         isClick = false
                     }
-                    params.x = (initialX + deltaX).coerceAtLeast(0)
-                    params.y = (initialY + deltaY).coerceAtLeast(0)
+                    params.x = (initialX + deltaX).coerceIn(0, screenWidth - pillSizePx)
+                    params.y = (initialY + deltaY).coerceIn(0, screenHeight - pillSizePx)
                     try {
                         windowManager.updateViewLayout(pillView, params)
                     } catch (_: Exception) {}
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    pillView.alpha = 1.0f
                     if (isClick) {
                         toggleExpandedPanel(params.x, params.y)
                     }
@@ -193,6 +217,7 @@ class FloatingSceneService : Service() {
 
         try {
             windowManager.addView(pillView, params)
+            Log.i(TAG, "Floating bot button added at (${params.x}, ${params.y})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add floating view: ${e.message}", e)
         }
@@ -216,16 +241,18 @@ class FloatingSceneService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        val expWidthPx = (290 * density).toInt()
+
         val expParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            expWidthPx,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = anchorX.coerceAtLeast(16)
-            y = anchorY.coerceAtLeast(80)
+            x = anchorX.coerceIn(16, (screenWidth - expWidthPx - 16).coerceAtLeast(16))
+            y = anchorY.coerceIn(60, (screenHeight - (400 * density).toInt()).coerceAtLeast(60))
         }
 
         expandedView?.findViewById<View>(R.id.btn_minimize)?.setOnClickListener {
@@ -233,9 +260,17 @@ class FloatingSceneService : Service() {
         }
 
         expandedView?.findViewById<View>(R.id.btn_scan)?.setOnClickListener {
+            Toast.makeText(this, "Scanning screen...", Toast.LENGTH_SHORT).show()
             serviceScope.launch(Dispatchers.IO) {
                 performSingleScan()
             }
+        }
+
+        expandedView?.findViewById<View>(R.id.btn_calibrate)?.setOnClickListener {
+            val calibIntent = Intent(this, CalibrationActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(calibIntent)
         }
 
         expandedView?.findViewById<View>(R.id.btn_history)?.setOnClickListener {
@@ -289,36 +324,45 @@ class FloatingSceneService : Service() {
 
         if (recognition == null) return
 
-        // If card detection status is "Card Not Detected", update panel status without saving fake round
-        if (recognition.detectionStatus == "Card Not Detected") {
-            serviceScope.launch(Dispatchers.Main) {
-                expandedView?.findViewById<TextView>(R.id.tv_current_cards)?.text = "Cards: Card Not Detected"
+        // 1. Update live detection feedback on HUD immediately
+        serviceScope.launch(Dispatchers.Main) {
+            expandedView?.let { view ->
+                view.findViewById<TextView>(R.id.tv_current_cards)?.text =
+                    "Spots: A: ${recognition.card1} | B: ${recognition.card2} | C: ${recognition.card3}"
+                view.findViewById<TextView>(R.id.tv_detection_status)?.text =
+                    "Status: ${recognition.detectionStatus} (${(recognition.confidence * 100).toInt()}%)"
             }
+        }
+
+        // 2. Round State Machine & Reset Logic:
+        // When game resets to BETTING or IDLE, clear the transition flag so next round will be recorded!
+        if (recognition.gamePhase == "BETTING" || recognition.gamePhase == "IDLE") {
+            isAwaitingNewRoundTransition = false
             return
         }
 
-        // Deduplication fingerprint
-        val rawFp = "${recognition.card1}_${recognition.card2}_${recognition.card3}_${recognition.detectedWinner ?: "none"}"
-        val md = MessageDigest.getInstance("MD5")
-        val fingerprint = md.digest(rawFp.toByteArray()).joinToString("") { "%02x".format(it) }
+        // 3. Showdown Winner Processing:
+        if (recognition.gamePhase == "SHOWDOWN" && recognition.detectedWinner != null && recognition.confidence >= 0.70f) {
+            val winner = recognition.detectedWinner
+            val rawFp = "${recognition.card1}_${recognition.card2}_${recognition.card3}_$winner"
+            val md = MessageDigest.getInstance("MD5")
+            val fingerprint = md.digest(rawFp.toByteArray()).joinToString("") { "%02x".format(it) }
 
-        val currentTime = System.currentTimeMillis()
+            val currentTime = System.currentTimeMillis()
 
-        // Deduplication Gate
-        if (fingerprint == lastSavedFingerprint || (currentTime - lastRecordedTime < MIN_ROUND_INTERVAL_MS)) {
-            refreshExpandedUi()
-            return
-        }
+            // Deduplication: Avoid recording duplicate rounds during the same showdown animation
+            if (isAwaitingNewRoundTransition || fingerprint == lastCommittedFingerprint || (currentTime - lastRecordedTime < MIN_ROUND_INTERVAL_MS)) {
+                return
+            }
 
-        // STRICT TRUTHFULNESS: Only commit verified rounds with known winner
-        if (recognition.confidence >= 0.70f && recognition.detectedWinner != null) {
-            lastSavedFingerprint = fingerprint
+            // Commit new verified real round to database
+            lastCommittedFingerprint = fingerprint
             lastRecordedTime = currentTime
+            isAwaitingNewRoundTransition = true // Lock until table transitions to betting/idle
 
             val history = database.roundDao().getAllRoundsChronological()
             val prediction = patternAnalyzer.calculateStatisticalPrediction(history)
-            val actualWinner = recognition.detectedWinner
-            val isCorrect = actualWinner.equals(prediction.mostLikely, ignoreCase = true)
+            val isCorrect = winner.equals(prediction.mostLikely, ignoreCase = true)
 
             val maxSeq = database.roundDao().getMaxSequenceNumber() ?: 0L
             val nextSeq = maxSeq + 1L
@@ -330,7 +374,7 @@ class FloatingSceneService : Service() {
                 card2 = recognition.card2,
                 card3 = recognition.card3,
                 detectionStatus = recognition.detectionStatus,
-                actualWinner = actualWinner,
+                actualWinner = winner,
                 predictedWinner = prediction.mostLikely,
                 predictedProbA = prediction.probA,
                 predictedProbB = prediction.probB,
@@ -343,8 +387,9 @@ class FloatingSceneService : Service() {
             )
 
             database.roundDao().insertRound(newRound)
+            Log.i(TAG, "Recorded Real Round #$nextSeq: Winner Spot $winner (Predicted: Spot ${prediction.mostLikely})")
 
-            // Update predictions for next round
+            // Update predictions for the NEXT round
             val updatedHistory = database.roundDao().getAllRoundsChronological()
             val nextPred = patternAnalyzer.calculateStatisticalPrediction(updatedHistory)
             currentPredictedWinner = nextPred.mostLikely
@@ -353,11 +398,6 @@ class FloatingSceneService : Service() {
             currentProbC = nextPred.probC
 
             refreshExpandedUi()
-        } else {
-            serviceScope.launch(Dispatchers.Main) {
-                expandedView?.findViewById<TextView>(R.id.tv_current_cards)?.text =
-                    "Cards: ${recognition.card1} | ${recognition.card2} | ${recognition.card3} (Result Not Verified)"
-            }
         }
     }
 
@@ -366,43 +406,55 @@ class FloatingSceneService : Service() {
         serviceScope.launch(Dispatchers.IO) {
             val history = database.roundDao().getAllRoundsChronological()
             val totalCount = history.size
+            val realCount = history.count { it.source != "SIMULATION" }
             val prediction = patternAnalyzer.calculateStatisticalPrediction(history)
             val latest = history.lastOrNull()
 
             serviceScope.launch(Dispatchers.Main) {
-                view.findViewById<TextView>(R.id.tv_round_count)?.text = "Round #$totalCount"
-                view.findViewById<TextView>(R.id.tv_current_cards)?.text =
-                    latest?.let { "Last: ${it.card1} ${it.card2} ${it.card3} (Winner: ${it.actualWinner})" }
-                        ?: "Cards: Observing screen..."
+                view.findViewById<TextView>(R.id.tv_round_count)?.text = "Round #${totalCount + 1} (Live)"
+                latest?.let {
+                    view.findViewById<TextView>(R.id.tv_current_cards)?.text =
+                        "Last #${it.roundSequenceNumber}: Winner Spot ${it.actualWinner} (${it.card1})"
+                }
 
-                view.findViewById<TextView>(R.id.tv_possible_a)?.text = "A: ${prediction.probA}%"
-                view.findViewById<TextView>(R.id.tv_possible_b)?.text = "B: ${prediction.probB}%"
-                view.findViewById<TextView>(R.id.tv_possible_c)?.text = "C: ${prediction.probC}%"
+                view.findViewById<TextView>(R.id.tv_possible_a)?.text = "Spot A: ${prediction.probA}%"
+                view.findViewById<TextView>(R.id.tv_possible_b)?.text = "Spot B: ${prediction.probB}%"
+                view.findViewById<TextView>(R.id.tv_possible_c)?.text = "Spot C: ${prediction.probC}%"
 
                 view.findViewById<ProgressBar>(R.id.progress_a)?.progress = prediction.probA
                 view.findViewById<ProgressBar>(R.id.progress_b)?.progress = prediction.probB
                 view.findViewById<ProgressBar>(R.id.progress_c)?.progress = prediction.probC
 
-                view.findViewById<TextView>(R.id.tv_most_likely)?.text = "Most Likely: Spot ${prediction.mostLikely}"
-                view.findViewById<TextView>(R.id.tv_data_status)?.text = "Status: ${prediction.dataStatus}"
+                view.findViewById<TextView>(R.id.tv_most_likely)?.text =
+                    "Most Likely: Spot ${prediction.mostLikely} (${prediction.confidence}%)"
+                view.findViewById<TextView>(R.id.tv_data_status)?.text =
+                    "Data: $realCount Real Observed Rounds ($totalCount total)"
 
                 val accStr = if (prediction.walkForwardAccuracy > 0f) {
                     "${String.format("%.1f", prediction.walkForwardAccuracy)}%"
                 } else {
-                    "Not Enough Data (<5)"
+                    "Calculating (<5 rounds)"
                 }
                 view.findViewById<TextView>(R.id.tv_verified_accuracy)?.text = "Verified Accuracy: $accStr"
                 view.findViewById<TextView>(R.id.tv_brier_score)?.text =
-                    "Brier Score: ${String.format("%.3f", prediction.brierScore)}"
+                    "Brier Score: ${String.format("%.3f", prediction.brierScore)} (Baseline: 0.667)"
             }
         }
     }
 
     private fun buildForegroundNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("SCENE Bot Active")
             .setContentText("Observing Poppo Live Golden Flower screen in background...")
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

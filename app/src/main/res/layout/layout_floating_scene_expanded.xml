@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="270dp"
+    android:layout_width="290dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="#F00F172A"
-    android:padding="14dp">
+    android:background="#FA0F172A"
+    android:padding="14dp"
+    android:elevation="12dp">
 
+    <!-- Header: Title, Round #, Close -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -17,53 +19,95 @@
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:text="Round #--"
+            android:text="Round #1 (Live)"
             android:textStyle="bold"
             android:textColor="#10B981"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tv_live_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● SCANNING"
+            android:textColor="#34D399"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="8dp" />
 
         <Button
             android:id="@+id/btn_minimize"
             android:layout_width="32dp"
             android:layout_height="32dp"
+            android:backgroundTint="#334155"
             android:text="✕"
-            android:textColor="#9CA3AF" />
+            android:textColor="#94A3B8"
+            android:textSize="12sp" />
     </LinearLayout>
 
+    <!-- Table Showdown / Cards status -->
     <TextView
         android:id="@+id/tv_current_cards"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Cards: Scanning Screen..."
+        android:text="Cards: Observing screen..."
         android:textColor="#E2E8F0"
         android:textSize="12sp"
-        android:layout_marginTop="4dp" />
+        android:layout_marginTop="6dp" />
+
+    <TextView
+        android:id="@+id/tv_detection_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Observing Table"
+        android:textColor="#38BDF8"
+        android:textSize="11sp"
+        android:layout_marginTop="2dp" />
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#334155"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Prediction Section Header -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="NEXT ROUND PREDICTION (A / B / C)"
+        android:textColor="#94A3B8"
+        android:textSize="10sp"
+        android:textStyle="bold" />
 
     <!-- Probabilities Progress Bars -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginTop="6dp">
+        android:layout_marginTop="4dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
             <TextView
                 android:id="@+id/tv_possible_a"
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:text="A: 33%"
+                android:text="Spot A: 33%"
                 android:textColor="#60A5FA"
                 android:textSize="12sp"
                 android:textStyle="bold" />
+
             <ProgressBar
                 android:id="@+id/progress_a"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="140dp"
-                android:layout_height="wrap_content"
+                android:layout_height="10dp"
                 android:max="100"
                 android:progress="33" />
         </LinearLayout>
@@ -72,21 +116,24 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="2dp">
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp">
+
             <TextView
                 android:id="@+id/tv_possible_b"
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:text="B: 33%"
+                android:text="Spot B: 33%"
                 android:textColor="#F472B6"
                 android:textSize="12sp"
                 android:textStyle="bold" />
+
             <ProgressBar
                 android:id="@+id/progress_b"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="140dp"
-                android:layout_height="wrap_content"
+                android:layout_height="10dp"
                 android:max="100"
                 android:progress="33" />
         </LinearLayout>
@@ -95,43 +142,49 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="2dp">
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp">
+
             <TextView
                 android:id="@+id/tv_possible_c"
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:text="C: 34%"
+                android:text="Spot C: 34%"
                 android:textColor="#34D399"
                 android:textSize="12sp"
                 android:textStyle="bold" />
+
             <ProgressBar
                 android:id="@+id/progress_c"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="140dp"
-                android:layout_height="wrap_content"
+                android:layout_height="10dp"
                 android:max="100"
                 android:progress="34" />
         </LinearLayout>
     </LinearLayout>
 
+    <!-- Most Likely Spot Badge -->
     <TextView
         android:id="@+id/tv_most_likely"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Most Likely: Spot A"
+        android:text="Most Likely: Spot A (34%)"
         android:textColor="#FBBF24"
         android:textStyle="bold"
         android:textSize="13sp"
         android:layout_marginTop="6dp" />
 
+    <!-- Data Status & Real Rounds -->
     <TextView
         android:id="@+id/tv_data_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Status: Insufficient Data"
+        android:text="Data: 0 Real Observed Rounds"
         android:textColor="#94A3B8"
-        android:textSize="11sp" />
+        android:textSize="11sp"
+        android:layout_marginTop="2dp" />
 
     <TextView
         android:id="@+id/tv_verified_accuracy"
@@ -139,43 +192,50 @@
         android:layout_height="wrap_content"
         android:text="Verified Accuracy: Calculating..."
         android:textColor="#38BDF8"
-        android:textSize="11sp" />
+        android:textSize="11sp"
+        android:layout_marginTop="1dp" />
 
     <TextView
         android:id="@+id/tv_brier_score"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Brier Score: 0.667"
-        android:textColor="#94A3B8"
-        android:textSize="10sp" />
+        android:text="Brier Score: 0.667 (Baseline: 0.667)"
+        android:textColor="#64748B"
+        android:textSize="10sp"
+        android:layout_marginTop="1dp" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="* Statistical frequency only. Past rounds do not guarantee future winners."
-        android:textColor="#E2E8F0"
-        android:textSize="9sp"
-        android:layout_marginTop="4dp" />
-
+    <!-- Action Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp">
+        android:layout_marginTop="10dp">
 
         <Button
             android:id="@+id/btn_scan"
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="36dp"
+            android:backgroundTint="#059669"
             android:text="SCAN"
             android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btn_calibrate"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="36dp"
+            android:backgroundTint="#1E293B"
+            android:text="CALIB"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
 
         <Button
             android:id="@+id/btn_history"
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="36dp"
+            android:backgroundTint="#334155"
             android:text="HIST"
             android:textSize="11sp"
             android:layout_marginStart="4dp" />

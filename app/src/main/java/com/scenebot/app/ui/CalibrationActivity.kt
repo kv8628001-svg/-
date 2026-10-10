@@ -1,6 +1,5 @@
 package com.scenebot.app.ui
 
-import android.graphics.Rect
 import android.os.Bundle
 import android.widget.Button
 import android.widget.SeekBar
@@ -36,35 +35,33 @@ class CalibrationActivity : AppCompatActivity() {
         val btnSave = findViewById<Button>(R.id.btn_save_calibration)
         val btnReset = findViewById<Button>(R.id.btn_reset_calibration)
 
-        val dm = resources.displayMetrics
-        val currentRect = calibrationManager.getCurrentCardRegion(dm.widthPixels, dm.heightPixels)
+        val norm = calibrationManager.getNormalizedRegion()
 
-        // Initialize sliders from current saved percentage
-        val curLeftPct = ((currentRect.left.toFloat() / dm.widthPixels) * 100).toInt().coerceIn(0, 50)
-        val curRightPct = ((currentRect.right.toFloat() / dm.widthPixels) * 100).toInt().coerceIn(50, 100)
-        val curTopPct = ((currentRect.top.toFloat() / dm.heightPixels) * 100).toInt().coerceIn(0, 80)
-        val curBottomPct = ((currentRect.bottom.toFloat() / dm.heightPixels) * 100).toInt().coerceIn(40, 100)
-
-        seekLeft.progress = curLeftPct
-        seekRight.progress = curRightPct
-        seekTop.progress = curTopPct
-        seekBottom.progress = curBottomPct
+        seekLeft.progress = (norm.left * 100).toInt().coerceIn(0, 45)
+        seekRight.progress = (norm.right * 100).toInt().coerceIn(55, 100)
+        seekTop.progress = (norm.top * 100).toInt().coerceIn(0, 75)
+        seekBottom.progress = (norm.bottom * 100).toInt().coerceIn(30, 100)
 
         fun updateLabels() {
-            tvTopLabel.text = "Top Y Margin: ${seekTop.progress}%"
-            tvBottomLabel.text = "Bottom Y Margin: ${seekBottom.progress}%"
-            tvLeftLabel.text = "Left X Margin: ${seekLeft.progress}%"
-            tvRightLabel.text = "Right X Margin: ${seekRight.progress}%"
-            tvCoords.text = "Box: Left ${seekLeft.progress}% | Top ${seekTop.progress}% | Right ${seekRight.progress}% | Bottom ${seekBottom.progress}%"
+            val l = seekLeft.progress
+            val r = seekRight.progress
+            val t = seekTop.progress
+            val b = seekBottom.progress
+            val span = (r - l) / 3
+            tvTopLabel.text = "Top Y Margin: $t%"
+            tvBottomLabel.text = "Bottom Y Margin: $b%"
+            tvLeftLabel.text = "Left X Margin: $l%"
+            tvRightLabel.text = "Right X Margin: $r%"
+            tvCoords.text = "Game ROI: Left $l% | Top $t% | Right $r% | Bottom $b%\n(Zone A: $l-${l + span}%, Zone B: ${l + span}-${l + 2 * span}%, Zone C: ${l + 2 * span}-$r%)"
         }
 
         val listener = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (seekBottom.progress <= seekTop.progress) {
-                    seekBottom.progress = (seekTop.progress + 5).coerceAtMost(100)
+                    seekBottom.progress = (seekTop.progress + 10).coerceAtMost(100)
                 }
                 if (seekRight.progress <= seekLeft.progress) {
-                    seekRight.progress = (seekLeft.progress + 5).coerceAtMost(100)
+                    seekRight.progress = (seekLeft.progress + 15).coerceAtMost(100)
                 }
                 updateLabels()
             }
@@ -76,31 +73,34 @@ class CalibrationActivity : AppCompatActivity() {
         seekBottom.setOnSeekBarChangeListener(listener)
         seekLeft.setOnSeekBarChangeListener(listener)
         seekRight.setOnSeekBarChangeListener(listener)
+
         updateLabels()
 
         btnPresetPhone.setOnClickListener {
-            seekLeft.progress = 15
-            seekRight.progress = 85
-            seekTop.progress = 45
-            seekBottom.progress = 65
+            seekLeft.progress = (CalibrationManager.DEFAULT_LEFT_PCT * 100).toInt()
+            seekRight.progress = (CalibrationManager.DEFAULT_RIGHT_PCT * 100).toInt()
+            seekTop.progress = (CalibrationManager.DEFAULT_TOP_PCT * 100).toInt()
+            seekBottom.progress = (CalibrationManager.DEFAULT_BOTTOM_PCT * 100).toInt()
             updateLabels()
+            Toast.makeText(this, "Preset: Standard Poppo Golden Flower Table", Toast.LENGTH_SHORT).show()
         }
 
         btnPresetTablet.setOnClickListener {
-            seekLeft.progress = 20
-            seekRight.progress = 80
-            seekTop.progress = 40
-            seekBottom.progress = 60
+            seekLeft.progress = 15
+            seekRight.progress = 85
+            seekTop.progress = 35
+            seekBottom.progress = 68
             updateLabels()
+            Toast.makeText(this, "Preset: Tablet / Wide Screen Table", Toast.LENGTH_SHORT).show()
         }
 
         btnSave.setOnClickListener {
-            val left = (dm.widthPixels * (seekLeft.progress / 100f)).toInt()
-            val right = (dm.widthPixels * (seekRight.progress / 100f)).toInt()
-            val top = (dm.heightPixels * (seekTop.progress / 100f)).toInt()
-            val bottom = (dm.heightPixels * (seekBottom.progress / 100f)).toInt()
+            val leftF = seekLeft.progress / 100f
+            val topF = seekTop.progress / 100f
+            val rightF = seekRight.progress / 100f
+            val bottomF = seekBottom.progress / 100f
 
-            calibrationManager.saveCalibration(Rect(left, top, right, bottom))
+            calibrationManager.saveCalibration(leftF, topF, rightF, bottomF)
             Toast.makeText(this, "Game region calibration saved!", Toast.LENGTH_SHORT).show()
             finish()
         }

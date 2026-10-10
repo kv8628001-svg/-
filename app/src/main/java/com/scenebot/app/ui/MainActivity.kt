@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.tvStatusCapture.text = "Capture Denied ✗"
             binding.tvStatusCapture.setTextColor(Color.parseColor("#EF4444"))
-            Toast.makeText(this, "Screen capture permission is required for SCENE Bot", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Screen capture permission is required for SCENE Bot to observe Poppo Live", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
     private fun showOverlayPermissionDialog() {
         AlertDialog.Builder(this)
             .setTitle("Overlay Permission Required")
-            .setMessage("SCENE Bot needs 'Display over other apps' permission so the small floating button appears over Poppo Live.\n\nPlease toggle 'Allow display over other apps' on the next screen.")
+            .setMessage("SCENE Bot needs \"Display over other apps\" permission so the small circular floating button appears over Poppo Live.\n\nPlease toggle \"Allow display over other apps\" on the next screen.")
             .setPositiveButton("Open Settings") { _, _ ->
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -176,7 +176,6 @@ class MainActivity : AppCompatActivity() {
             putExtra(FloatingSceneService.EXTRA_RESULT_CODE, resultCode)
             putExtra(FloatingSceneService.EXTRA_RESULT_DATA, data)
         }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
         } else {
@@ -185,7 +184,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvStatusCapture.text = "Active (Foreground) ✓"
         binding.tvStatusCapture.setTextColor(Color.parseColor("#10B981"))
-
         Toast.makeText(this, "SCENE Bot started! Floating button is now active. Switch to Poppo Live.", Toast.LENGTH_LONG).show()
         moveTaskToBack(true)
     }
@@ -198,7 +196,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvStatusCapture.text = "Stopped"
         binding.tvStatusCapture.setTextColor(Color.parseColor("#94A3B8"))
-
         Toast.makeText(this, "SCENE Bot stopped", Toast.LENGTH_SHORT).show()
     }
 
@@ -235,7 +232,7 @@ class MainActivity : AppCompatActivity() {
         val accStr = if (prediction.walkForwardAccuracy > 0f) {
             "${String.format("%.1f", prediction.walkForwardAccuracy)}%"
         } else {
-            "Not Enough Data (<5)"
+            "Calculating (<5 rounds)"
         }
         binding.tvVerifiedAccuracy.text = accStr
         binding.tvBrierScore.text = String.format("%.3f", prediction.brierScore)
@@ -266,7 +263,8 @@ class MainActivity : AppCompatActivity() {
                             val updated = latest.copy(
                                 actualWinner = newWinner,
                                 predictionCorrect = newWinner.equals(latest.predictedWinner, ignoreCase = true),
-                                detectionStatus = "Manual Correction"
+                                detectionStatus = "Manual Correction",
+                                source = "MANUAL"
                             )
                             database.roundDao().updateRound(updated)
                             withContext(Dispatchers.Main) {

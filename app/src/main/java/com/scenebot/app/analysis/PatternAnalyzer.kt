@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 
 data class StatisticalPredictionResult(
     val hasEnoughData: Boolean,
-    val dataStatus: String, // "Sufficient" or "Insufficient Data"
+    val dataStatus: String,
     val probA: Int,
     val probB: Int,
     val probC: Int,
@@ -47,9 +47,13 @@ class PatternAnalyzer {
     fun calculateStatisticalPrediction(rounds: List<RoundEntity>): StatisticalPredictionResult {
         val n = rounds.size
         val hasEnough = n >= MIN_DATA_THRESHOLD
-        val dataStatus = if (hasEnough) "Sufficient ($n rounds)" else "Insufficient Data ($n/$MIN_DATA_THRESHOLD rounds)"
+        val dataStatus = if (hasEnough) {
+            "Sufficient ($n real rounds)"
+        } else {
+            "Insufficient Data ($n/$MIN_DATA_THRESHOLD rounds)"
+        }
 
-        // If very little data, return uniform smoothed distribution
+        // If no data, return uniform smoothed distribution
         if (n == 0) {
             return StatisticalPredictionResult(
                 hasEnoughData = false,
@@ -57,11 +61,11 @@ class PatternAnalyzer {
                 probA = 33, probB = 33, probC = 34,
                 mostLikely = "A",
                 confidence = 34,
-                rationale = "Uniform prior (no observed data)",
+                rationale = "Uniform prior (no observed rounds yet)",
                 sampleSize = 0,
                 walkForwardAccuracy = 0f,
                 brierScore = UNIFORM_BASELINE_BRIER,
-                baselineComparison = "No data to compare against baseline"
+                baselineComparison = "Awaiting rounds to compare against 33.3% baseline"
             )
         }
 
@@ -69,7 +73,6 @@ class PatternAnalyzer {
         var countA = 1.0
         var countB = 1.0
         var countC = 1.0
-
         for (r in rounds) {
             when (r.actualWinner.uppercase()) {
                 "A" -> countA += 1.0
@@ -87,7 +90,6 @@ class PatternAnalyzer {
         var transCountA = 1.0
         var transCountB = 1.0
         var transCountC = 1.0
-
         for (i in 0 until rounds.size - 1) {
             if (rounds[i].actualWinner.equals(lastWinner, ignoreCase = true)) {
                 when (rounds[i + 1].actualWinner.uppercase()) {
@@ -130,13 +132,13 @@ class PatternAnalyzer {
         val rationale = if (hasEnough) {
             "Bayesian Dirichlet smoothing over $n rounds with Markov transition from Spot $lastWinner"
         } else {
-            "Preliminary distribution ($n rounds). Need at least $MIN_DATA_THRESHOLD rounds for stable modeling."
+            "Empirical frequency over $n rounds conditioned on Spot $lastWinner (stabilizes at $MIN_DATA_THRESHOLD rounds)"
         }
 
         val baselineComparison = when {
-            backtest.totalTested == 0 -> "Awaiting >= 5 rounds for backtest"
-            backtest.accuracyPercentage > 35.0f -> "Model slightly leads Random Baseline (+${String.format("%.1f", backtest.accuracyPercentage - UNIFORM_BASELINE_ACCURACY)}%)"
-            else -> "Model at/below Baseline (${String.format("%.1f", backtest.accuracyPercentage)}% vs 33.3%) — Independence Indicated"
+            backtest.totalTested == 0 -> "Awaiting >= 5 rounds for walk-forward validation"
+            backtest.accuracyPercentage > 35.0f -> "Model leads Random Baseline (+${String.format("%.1f", backtest.accuracyPercentage - UNIFORM_BASELINE_ACCURACY)}%)"
+            else -> "Model matches Random Baseline (${String.format("%.1f", backtest.accuracyPercentage)}% vs 33.3%)"
         }
 
         return StatisticalPredictionResult(
@@ -178,12 +180,10 @@ class PatternAnalyzer {
         var correct = 0
         var totalBrier = 0.0
 
-        // Start from round index 4 (5th round) onwards
         for (i in 4 until rounds.size) {
             val historyWindow = rounds.subList(0, i)
             val actual = rounds[i].actualWinner.uppercase()
 
-            // Calculate prediction using only historyWindow
             var countA = 1.0
             var countB = 1.0
             var countC = 1.0
@@ -210,11 +210,10 @@ class PatternAnalyzer {
                 correct++
             }
 
-            // Brier score component for 3 outcomes:
-            // sum_{k} (p_k - y_k)^2
             val yA = if (actual == "A") 1.0 else 0.0
             val yB = if (actual == "B") 1.0 else 0.0
             val yC = if (actual == "C") 1.0 else 0.0
+
             val stepBrier = (pA - yA).pow(2.0) + (pB - yB).pow(2.0) + (pC - yC).pow(2.0)
             totalBrier += stepBrier
         }
@@ -222,11 +221,10 @@ class PatternAnalyzer {
         val accuracy = if (tested > 0) (correct.toFloat() / tested) * 100f else 0f
         val avgBrier = if (tested > 0) (totalBrier / tested).toFloat() else UNIFORM_BASELINE_BRIER
         val beatsBaseline = accuracy > UNIFORM_BASELINE_ACCURACY && avgBrier < UNIFORM_BASELINE_BRIER
-
         val summary = if (beatsBaseline) {
-            "Walk-forward accuracy ${String.format("%.1f", accuracy)}% (Beating baseline by +${String.format("%.1f", accuracy - UNIFORM_BASELINE_ACCURACY)}%)"
+            "Walk-forward accuracy ${String.format("%.1f", accuracy)}% (+${String.format("%.1f", accuracy - UNIFORM_BASELINE_ACCURACY)}% vs baseline)"
         } else {
-            "Walk-forward accuracy ${String.format("%.1f", accuracy)}% (Matches uniform random 33.3% — Independence observed)"
+            "Walk-forward accuracy ${String.format("%.1f", accuracy)}% (Matches uniform random 33.3%)"
         }
 
         return BacktestReport(

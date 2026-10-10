@@ -13,6 +13,7 @@ import java.util.Date
 import java.util.Locale
 
 class RoundHistoryAdapter : RecyclerView.Adapter<RoundHistoryAdapter.RoundViewHolder>() {
+
     private var rounds: List<RoundEntity> = emptyList()
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
@@ -34,6 +35,7 @@ class RoundHistoryAdapter : RecyclerView.Adapter<RoundHistoryAdapter.RoundViewHo
 
     inner class RoundViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvRoundNum: TextView = itemView.findViewById(R.id.tv_item_round_num)
+        private val tvSourceBadge: TextView = itemView.findViewById(R.id.tv_item_source_badge)
         private val tvTime: TextView = itemView.findViewById(R.id.tv_item_time)
         private val tvCards: TextView = itemView.findViewById(R.id.tv_item_cards)
         private val tvWinner: TextView = itemView.findViewById(R.id.tv_item_winner)
@@ -44,23 +46,41 @@ class RoundHistoryAdapter : RecyclerView.Adapter<RoundHistoryAdapter.RoundViewHo
         fun bind(round: RoundEntity) {
             tvRoundNum.text = "#${round.roundSequenceNumber}"
             tvTime.text = dateFormat.format(Date(round.timestamp))
-            tvCards.text = "Cards: ${round.card1} | ${round.card2} | ${round.card3}"
+
+            // Differentiate Real auto-captured rounds from simulation or manual
+            when (round.source) {
+                "AUTO_CAPTURE" -> {
+                    tvSourceBadge.text = "[REAL CAPTURE]"
+                    tvSourceBadge.setTextColor(Color.parseColor("#10B981")) // Emerald
+                }
+                "SIMULATION" -> {
+                    tvSourceBadge.text = "[TEST SIM]"
+                    tvSourceBadge.setTextColor(Color.parseColor("#A855F7")) // Purple
+                }
+                else -> {
+                    tvSourceBadge.text = "[MANUAL]"
+                    tvSourceBadge.setTextColor(Color.parseColor("#38BDF8")) // Sky blue
+                }
+            }
+
+            tvCards.text = "${round.card1} | ${round.card2} | ${round.card3}"
             tvWinner.text = "Winner: Spot ${round.actualWinner}"
 
-            val predStr = "Pred: ${round.predictedWinner} (A:${round.predictedProbA}% B:${round.predictedProbB}% C:${round.predictedProbC}%)"
+            val predStr = "Pred: Spot ${round.predictedWinner} (A:${round.predictedProbA}% B:${round.predictedProbB}% C:${round.predictedProbC}%)"
             tvPrediction.text = predStr
 
             if (round.predictionCorrect) {
                 tvHitStatus.text = "HIT ✓"
-                tvHitStatus.setTextColor(Color.parseColor("#10B981")) // Green
+                tvHitStatus.setTextColor(Color.parseColor("#10B981"))
             } else {
                 tvHitStatus.text = "MISS ✗"
-                tvHitStatus.setTextColor(Color.parseColor("#EF4444")) // Red
+                tvHitStatus.setTextColor(Color.parseColor("#EF4444"))
             }
 
             tvDetectionStatus.text = round.detectionStatus
             when (round.detectionStatus) {
                 "Verified" -> tvDetectionStatus.setTextColor(Color.parseColor("#10B981"))
+                "Showdown Detected" -> tvDetectionStatus.setTextColor(Color.parseColor("#38BDF8"))
                 "Result Not Verified" -> tvDetectionStatus.setTextColor(Color.parseColor("#F59E0B"))
                 else -> tvDetectionStatus.setTextColor(Color.parseColor("#9CA3AF"))
             }
