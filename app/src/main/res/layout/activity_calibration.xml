@@ -1,43 +1,164 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0F172A"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:background="#0F172A">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="GAME REGION CALIBRATION"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/tv_calibration_info"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
-        android:text="Calibrate Golden Flower card showdown area"
-        android:textColor="#94A3B8"
-        android:textSize="13sp"
-        android:layout_marginTop="8dp" />
+        android:orientation="vertical"
+        android:padding="20dp">
 
-    <Button
-        android:id="@+id/btn_save_calibration"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:backgroundTint="#10B981"
-        android:text="SAVE CALIBRATION"
-        android:layout_marginTop="24dp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="GAME REGION CALIBRATION"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btn_reset_calibration"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:backgroundTint="#334155"
-        android:text="RESET TO DEFAULT"
-        android:layout_marginTop="8dp" />
-</LinearLayout>
+        <TextView
+            android:id="@+id/tv_calibration_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Adjust the detection crop box to match the Golden Flower 3-card showdown and winner area on Poppo Live."
+            android:textColor="#94A3B8"
+            android:textSize="12sp"
+            android:layout_marginTop="6dp" />
+
+        <!-- Coordinates Preview -->
+        <TextView
+            android:id="@+id/tv_coords_preview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Current Box: Left: 15% | Top: 45% | Right: 85% | Bottom: 65%"
+            android:textColor="#38BDF8"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginTop="14dp" />
+
+        <!-- Presets -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Quick Presets:"
+            android:textColor="#CBD5E1"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <Button
+                android:id="@+id/btn_preset_poppo_phone"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="40dp"
+                android:backgroundTint="#1E293B"
+                android:text="Poppo Phone (Standard)"
+                android:textSize="10sp" />
+
+            <Button
+                android:id="@+id/btn_preset_tablet"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="40dp"
+                android:backgroundTint="#1E293B"
+                android:text="Tablet / Foldable"
+                android:textSize="10sp"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+
+        <!-- Top Slider / Setting -->
+        <TextView
+            android:id="@+id/tv_top_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Top Y Margin: 45%"
+            android:textColor="#E2E8F0"
+            android:textSize="12sp"
+            android:layout_marginTop="16dp" />
+
+        <SeekBar
+            android:id="@+id/seek_top"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="80"
+            android:progress="45" />
+
+        <!-- Bottom Slider / Setting -->
+        <TextView
+            android:id="@+id/tv_bottom_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bottom Y Margin: 65%"
+            android:textColor="#E2E8F0"
+            android:textSize="12sp"
+            android:layout_marginTop="10dp" />
+
+        <SeekBar
+            android:id="@+id/seek_bottom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="65" />
+
+        <!-- Left Slider / Setting -->
+        <TextView
+            android:id="@+id/tv_left_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Left X Margin: 15%"
+            android:textColor="#E2E8F0"
+            android:textSize="12sp"
+            android:layout_marginTop="10dp" />
+
+        <SeekBar
+            android:id="@+id/seek_left"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="50"
+            android:progress="15" />
+
+        <!-- Right Slider / Setting -->
+        <TextView
+            android:id="@+id/tv_right_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Right X Margin: 85%"
+            android:textColor="#E2E8F0"
+            android:textSize="12sp"
+            android:layout_marginTop="10dp" />
+
+        <SeekBar
+            android:id="@+id/seek_right"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="85" />
+
+        <Button
+            android:id="@+id/btn_save_calibration"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:backgroundTint="#10B981"
+            android:text="SAVE CALIBRATION"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginTop="24dp" />
+
+        <Button
+            android:id="@+id/btn_reset_calibration"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:backgroundTint="#334155"
+            android:text="RESET TO DEFAULT"
+            android:textSize="11sp"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+</ScrollView>

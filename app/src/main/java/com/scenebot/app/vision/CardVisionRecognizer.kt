@@ -13,7 +13,7 @@ data class CardRecognitionResult(
     val card1: String,
     val card2: String,
     val card3: String,
-    val detectedWinner: String?, // "A", "B", "C" if winner badge visible
+    val detectedWinner: String?, // "A", "B", "C" if winner badge visible, else null
     val detectionStatus: String, // "Verified", "Card Not Detected", "Result Not Verified"
     val confidence: Float
 )
@@ -55,13 +55,13 @@ class CardVisionRecognizer(private val context: Context) {
             ""
         }
 
-        // Check for visible Winner Badge: e.g. "WINNER A", "A WIN", "A VICTORY", or highlighted spot
+        // Check for visible Winner Badge: e.g. "WIN A", "A WIN", "A VICTORY", "WINNER B", etc.
         var winner: String? = null
-        if (ocrText.contains("WIN A") || ocrText.contains("A WIN") || ocrText.contains("VICTORY A")) {
+        if (ocrText.contains("WIN A") || ocrText.contains("A WIN") || ocrText.contains("VICTORY A") || ocrText.contains("WINNER A")) {
             winner = "A"
-        } else if (ocrText.contains("WIN B") || ocrText.contains("B WIN") || ocrText.contains("VICTORY B")) {
+        } else if (ocrText.contains("WIN B") || ocrText.contains("B WIN") || ocrText.contains("VICTORY B") || ocrText.contains("WINNER B")) {
             winner = "B"
-        } else if (ocrText.contains("WIN C") || ocrText.contains("C WIN") || ocrText.contains("VICTORY C")) {
+        } else if (ocrText.contains("WIN C") || ocrText.contains("C WIN") || ocrText.contains("VICTORY C") || ocrText.contains("WINNER C")) {
             winner = "C"
         }
 
@@ -95,11 +95,13 @@ class CardVisionRecognizer(private val context: Context) {
         val avgConfidence = (c1.second + c2.second + c3.second) / 3f
 
         // STRICT TRUTHFULNESS:
-        // If average confidence is below 0.65 or cards are blank, report "Card Not Detected"
-        val isVerified = avgConfidence >= 0.70f && c1.first != "Card Not Detected" && c2.first != "Card Not Detected" && c3.first != "Card Not Detected"
+        // No fake results. Only mark verified if cards are detected AND winner is identified with high confidence
+        val isCardDetected = c1.first != "Card Not Detected" && c2.first != "Card Not Detected" && c3.first != "Card Not Detected"
+        val isVerified = avgConfidence >= 0.70f && isCardDetected && winner != null
+
         val status = when {
             isVerified -> "Verified"
-            avgConfidence >= 0.50f -> "Result Not Verified"
+            isCardDetected -> "Result Not Verified"
             else -> "Card Not Detected"
         }
 
@@ -107,7 +109,7 @@ class CardVisionRecognizer(private val context: Context) {
             card1 = c1.first,
             card2 = c2.first,
             card3 = c3.first,
-            detectedWinner = winner ?: (if (c1.first == "A" || c2.first == "A" || c3.first == "A") "A" else null),
+            detectedWinner = winner,
             detectionStatus = status,
             confidence = avgConfidence
         )
@@ -124,13 +126,14 @@ class CardVisionRecognizer(private val context: Context) {
             val visionText = textRecognizer.process(inputImage).await()
             val text = visionText.text.uppercase()
             when {
-                text.contains("A") -> Pair("A", 0.90f)
-                text.contains("B") -> Pair("B", 0.90f)
-                text.contains("C") -> Pair("C", 0.90f)
-                text.contains("K") -> Pair("K", 0.88f)
-                text.contains("Q") -> Pair("Q", 0.88f)
-                text.contains("J") -> Pair("J", 0.88f)
+                text.contains("A") -> Pair("Ace", 0.90f)
+                text.contains("K") -> Pair("King", 0.88f)
+                text.contains("Q") -> Pair("Queen", 0.88f)
+                text.contains("J") -> Pair("Jack", 0.88f)
                 text.contains("10") -> Pair("10", 0.85f)
+                text.contains("9") -> Pair("9", 0.85f)
+                text.contains("8") -> Pair("8", 0.85f)
+                text.contains("7") -> Pair("7", 0.85f)
                 else -> cvResult
             }
         } catch (_: Exception) {
@@ -157,7 +160,7 @@ class CardVisionRecognizer(private val context: Context) {
 
         val darkRatio = if (totalSamples > 0) darkPixels.toFloat() / totalSamples else 0f
         return when {
-            darkRatio in 0.15f..0.45f -> Pair("Card Verified", 0.75f)
+            darkRatio in 0.15f..0.45f -> Pair("Card Present", 0.75f)
             darkRatio in 0.05f..0.15f -> Pair("Low Contrast", 0.50f)
             else -> Pair("Card Not Detected", 0.20f)
         }

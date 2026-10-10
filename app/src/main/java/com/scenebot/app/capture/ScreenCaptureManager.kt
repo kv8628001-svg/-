@@ -10,7 +10,11 @@ import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 
 class ScreenCaptureManager(
@@ -18,31 +22,55 @@ class ScreenCaptureManager(
     resultCode: Int,
     resultData: Intent
 ) {
-    private val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    companion object {
+        private const val TAG = "ScreenCaptureManager"
+    }
+
+    private val mediaProjectionManager =
+        context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+
     private var width: Int = 1080
     private var height: Int = 1920
     private var density: Int = DisplayMetrics.DENSITY_DEFAULT
+    private var isInitialized = false
 
     init {
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.getRealMetrics(metrics)
-        width = metrics.widthPixels
-        height = metrics.heightPixels
-        density = metrics.densityDpi
+        try {
+            val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            width = metrics.widthPixels
+            height = metrics.heightPixels
+            density = metrics.densityDpi
 
-        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, resultData)
-        setupVirtualDisplay()
+            mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, resultData)
+
+            // CRITICAL FOR ANDROID 14 & ANDROID 15:
+            // MediaProjection.Callback MUST be registered before calling createVirtualDisplay!
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    super.onStop()
+                    Log.i(TAG, "MediaProjection stopped by system or user")
+                    stop()
+                }
+            }, Handler(Looper.getMainLooper()))
+
+            setupVirtualDisplay()
+            isInitialized = true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize ScreenCaptureManager: ${e.message}", e)
+        }
     }
 
     @SuppressLint("WrongConstant")
     private fun setupVirtualDisplay() {
+        val proj = mediaProjection ?: return
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
+        virtualDisplay = proj.createVirtualDisplay(
             "SceneBotCapture",
             width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -51,11 +79,13 @@ class ScreenCaptureManager(
         )
     }
 
+    fun isReady(): Boolean = isInitialized && virtualDisplay != null
+
     fun acquireLatestScreenshot(): Bitmap? {
         val reader = imageReader ?: return null
         val image = try {
             reader.acquireLatestImage() ?: return null
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             return null
         }
 
@@ -73,7 +103,7 @@ class ScreenCaptureManager(
             )
             bitmap.copyPixelsFromBuffer(buffer)
             Bitmap.createBitmap(bitmap, 0, 0, width, height)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             null
         } finally {
             image.close()
@@ -85,9 +115,12 @@ class ScreenCaptureManager(
             virtualDisplay?.release()
             imageReader?.close()
             mediaProjection?.stop()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping ScreenCaptureManager: ${e.message}")
+        }
         virtualDisplay = null
         imageReader = null
         mediaProjection = null
+        isInitialized = false
     }
 }

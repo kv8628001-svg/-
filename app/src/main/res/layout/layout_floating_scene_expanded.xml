@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="260dp"
+    android:layout_width="270dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="#E60F172A"
+    android:background="#F00F172A"
     android:padding="14dp">
 
     <LinearLayout
@@ -11,6 +11,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical">
+
         <TextView
             android:id="@+id/tv_round_count"
             android:layout_width="0dp"
@@ -20,6 +21,7 @@
             android:textStyle="bold"
             android:textColor="#10B981"
             android:textSize="13sp" />
+
         <Button
             android:id="@+id/btn_minimize"
             android:layout_width="32dp"
@@ -32,7 +34,7 @@
         android:id="@+id/tv_current_cards"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Cards: Scanning..."
+        android:text="Cards: Scanning Screen..."
         android:textColor="#E2E8F0"
         android:textSize="12sp"
         android:layout_marginTop="4dp" />
@@ -43,6 +45,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:layout_marginTop="6dp">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -126,7 +129,7 @@
         android:id="@+id/tv_data_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Status: Sufficient"
+        android:text="Status: Insufficient Data"
         android:textColor="#94A3B8"
         android:textSize="11sp" />
 
@@ -134,7 +137,7 @@
         android:id="@+id/tv_verified_accuracy"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Verified Accuracy: 34.2%"
+        android:text="Verified Accuracy: Calculating..."
         android:textColor="#38BDF8"
         android:textSize="11sp" />
 
@@ -142,14 +145,14 @@
         android:id="@+id/tv_brier_score"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Brier Score: 0.655"
+        android:text="Brier Score: 0.667"
         android:textColor="#94A3B8"
         android:textSize="10sp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="* Statistical frequency only. Not a guaranteed win."
+        android:text="* Statistical frequency only. Past rounds do not guarantee future winners."
         android:textColor="#E2E8F0"
         android:textSize="9sp"
         android:layout_marginTop="4dp" />
@@ -159,6 +162,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:layout_marginTop="8dp">
+
         <Button
             android:id="@+id/btn_scan"
             android:layout_width="0dp"
@@ -166,12 +170,23 @@
             android:layout_height="36dp"
             android:text="SCAN"
             android:textSize="11sp" />
+
         <Button
             android:id="@+id/btn_history"
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="36dp"
             android:text="HIST"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+
+        <Button
+            android:id="@+id/btn_stop"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="36dp"
+            android:backgroundTint="#EF4444"
+            android:text="STOP"
             android:textSize="11sp"
             android:layout_marginStart="4dp" />
     </LinearLayout>
