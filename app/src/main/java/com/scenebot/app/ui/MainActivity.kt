@@ -154,9 +154,7 @@ class MainActivity : AppCompatActivity() {
     private fun showOverlayPermissionDialog() {
         AlertDialog.Builder(this)
             .setTitle("Overlay Permission Required")
-            .setMessage("SCENE Bot needs 'Display over other apps' permission so the small floating button appears over Poppo Live.
-
-Please toggle 'Allow display over other apps' on the next screen.")
+            .setMessage("SCENE Bot needs 'Display over other apps' permission so the small floating button appears over Poppo Live.\n\nPlease toggle 'Allow display over other apps' on the next screen.")
             .setPositiveButton("Open Settings") { _, _ ->
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -257,8 +255,7 @@ Please toggle 'Allow display over other apps' on the next screen.")
                 val spots = arrayOf("Spot A", "Spot B", "Spot C")
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Correct Round #${latest.roundSequenceNumber} Winner")
-                    .setMessage("Current recorded winner: Spot ${latest.actualWinner}
-If the screen OCR misidentified the winner, select the actual winner:")
+                    .setMessage("Current recorded winner: Spot ${latest.actualWinner}\nIf the screen OCR misidentified the winner, select the actual winner:")
                     .setItems(spots) { _, which ->
                         val newWinner = when (which) {
                             0 -> "A"
