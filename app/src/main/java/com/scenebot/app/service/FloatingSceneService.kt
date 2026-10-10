@@ -40,6 +40,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+enum class GameRoundState {
+    BETTING_ACTIVE,    // Countdown active (15s..0s), chips being placed -> Pre-round prediction active!
+    DEALING_CARDS,     // Cards dealing / stop betting
+    SHOWDOWN_REVEAL,   // Cards revealed, winner declared -> Winner detection active!
+    ROUND_COMMITTED,   // Winner saved to DB, next round prediction prepared!
+    IDLE_OBSERVING     // Table observing, waiting for round to begin
+}
 
 class FloatingSceneService : Service() {
 
@@ -51,6 +62,7 @@ class FloatingSceneService : Service() {
         const val EXTRA_RESULT_DATA = "extra_result_data"
         const val ACTION_STOP = "com.scenebot.app.ACTION_STOP"
         const val MIN_ROUND_INTERVAL_MS = 6000L
+        const val AUTO_RESET_TIMEOUT_MS = 14000L // Guaranteed fail-safe reset after 14s
     }
 
     private lateinit var windowManager: WindowManager
@@ -64,21 +76,26 @@ class FloatingSceneService : Service() {
     private var scanJob: Job? = null
     private var isScanning = false
 
-    // Game Round State Machine
-    private var isAwaitingNewRoundTransition = false
+    // Explicit Round State Machine
+    private var currentRoundState = GameRoundState.IDLE_OBSERVING
+    private var isRoundCommittedForCurrentShowdown = false
+    private var lastCommittedTime = 0L
     private var lastCommittedFingerprint = ""
-    private var lastRecordedTime = 0L
+    private var lastRecordedRoundSeq = 0L
 
-    // Live Predictions for Next Round
+    // Live Prediction State
     private var currentPredictedWinner = "A"
     private var currentProbA = 33
     private var currentProbB = 33
     private var currentProbC = 34
+    private var latestAuditLogString = "Awaiting first round..."
 
-    // Screen Dimensions for Clamping Overlay
+    // Screen Dimensions
     private var screenWidth = 1080
     private var screenHeight = 1920
     private var density = 2.0f
+
+    private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     override fun onCreate() {
         super.onCreate()
@@ -94,6 +111,18 @@ class FloatingSceneService : Service() {
         density = dm.density
 
         createNotificationChannel()
+
+        // Load latest state from database upon starting
+        serviceScope.launch(Dispatchers.IO) {
+            val history = database.roundDao().getAllRoundsChronological()
+            lastRecordedRoundSeq = database.roundDao().getMaxSequenceNumber() ?: 0L
+            val pred = patternAnalyzer.calculateStatisticalPrediction(history)
+            currentPredictedWinner = pred.mostLikely
+            currentProbA = pred.probA
+            currentProbB = pred.probB
+            currentProbC = pred.probC
+            Log.i(TAG, "[SCENEBOT-INIT] Loaded ${history.size} historical rounds. Initial prediction: Spot ${pred.mostLikely} (A:${pred.probA}% B:${pred.probB}% C:${pred.probC}%)")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -169,7 +198,6 @@ class FloatingSceneService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // Position on right edge, comfortable 35% height from top
             x = (screenWidth - pillSizePx - (16 * density).toInt()).coerceAtLeast(0)
             y = (screenHeight * 0.35f).toInt()
         }
@@ -324,79 +352,125 @@ class FloatingSceneService : Service() {
 
         if (recognition == null) return
 
-        // 1. Update live detection feedback on HUD immediately
-        serviceScope.launch(Dispatchers.Main) {
-            expandedView?.let { view ->
-                view.findViewById<TextView>(R.id.tv_current_cards)?.text =
-                    "Spots: A: ${recognition.card1} | B: ${recognition.card2} | C: ${recognition.card3}"
-                view.findViewById<TextView>(R.id.tv_detection_status)?.text =
-                    "Status: ${recognition.detectionStatus} (${(recognition.confidence * 100).toInt()}%)"
+        val now = System.currentTimeMillis()
+
+        // FAIL-SAFE UNLOCK: If 14s passed since last showdown commit,
+        // automatically unlock commitment so next round is NEVER dropped!
+        if (isRoundCommittedForCurrentShowdown && (now - lastCommittedTime >= AUTO_RESET_TIMEOUT_MS)) {
+            Log.i(TAG, "[SCENEBOT-TIMEOUT] 14s elapsed since last round commit. Unlocking commitment state for next round.")
+            isRoundCommittedForCurrentShowdown = false
+            currentRoundState = GameRoundState.BETTING_ACTIVE
+        }
+
+        // 1. Update Game Round State according to vision detection
+        when (recognition.gamePhase) {
+            "BETTING" -> {
+                currentRoundState = GameRoundState.BETTING_ACTIVE
+                isRoundCommittedForCurrentShowdown = false // Reset: New betting round has begun!
+            }
+            "DEALING" -> {
+                currentRoundState = GameRoundState.DEALING_CARDS
+            }
+            "SHOWDOWN" -> {
+                currentRoundState = GameRoundState.SHOWDOWN_REVEAL
+            }
+            else -> {
+                if (!isRoundCommittedForCurrentShowdown) {
+                    currentRoundState = GameRoundState.IDLE_OBSERVING
+                }
             }
         }
 
-        // 2. Round State Machine & Reset Logic:
-        // When game resets to BETTING or IDLE, clear the transition flag so next round will be recorded!
-        if (recognition.gamePhase == "BETTING" || recognition.gamePhase == "IDLE") {
-            isAwaitingNewRoundTransition = false
-            return
+        // 2. Update HUD live detection feedback immediately
+        serviceScope.launch(Dispatchers.Main) {
+            expandedView?.let { view ->
+                val stateText = when (currentRoundState) {
+                    GameRoundState.BETTING_ACTIVE -> "BETTING TIME (Place Bets)"
+                    GameRoundState.DEALING_CARDS -> "DEALING CARDS..."
+                    GameRoundState.SHOWDOWN_REVEAL -> "SHOWDOWN: ${recognition.detectionStatus}"
+                    GameRoundState.ROUND_COMMITTED -> "ROUND COMMITTED ✓ (Preparing Next)"
+                    GameRoundState.IDLE_OBSERVING -> "Observing Table"
+                }
+                view.findViewById<TextView>(R.id.tv_current_cards)?.text =
+                    "Spots: A: ${recognition.card1} | B: ${recognition.card2} | C: ${recognition.card3}"
+                view.findViewById<TextView>(R.id.tv_detection_status)?.text =
+                    "State: $stateText | ${(recognition.confidence * 100).toInt()}% Conf"
+                view.findViewById<TextView>(R.id.tv_debug_audit)?.text = latestAuditLogString
+            }
         }
 
-        // 3. Showdown Winner Processing:
-        if (recognition.gamePhase == "SHOWDOWN" && recognition.detectedWinner != null && recognition.confidence >= 0.70f) {
-            val winner = recognition.detectedWinner
+        // 3. SHOWDOWN WINNER COMMITMENT:
+        // Only trigger when winner is identified with confidence >= 0.70f and has not already been committed
+        val winner = recognition.detectedWinner
+        if (recognition.gamePhase == "SHOWDOWN" && winner != null && recognition.confidence >= 0.70f) {
             val rawFp = "${recognition.card1}_${recognition.card2}_${recognition.card3}_$winner"
             val md = MessageDigest.getInstance("MD5")
             val fingerprint = md.digest(rawFp.toByteArray()).joinToString("") { "%02x".format(it) }
 
-            val currentTime = System.currentTimeMillis()
-
-            // Deduplication: Avoid recording duplicate rounds during the same showdown animation
-            if (isAwaitingNewRoundTransition || fingerprint == lastCommittedFingerprint || (currentTime - lastRecordedTime < MIN_ROUND_INTERVAL_MS)) {
+            // Deduplication Check:
+            // Block only if already committed for this exact round showdown window (< 10 seconds)
+            if (isRoundCommittedForCurrentShowdown) {
+                return
+            }
+            if (fingerprint == lastCommittedFingerprint && (now - lastCommittedTime < MIN_ROUND_INTERVAL_MS)) {
                 return
             }
 
-            // Commit new verified real round to database
+            // --- COMMIT NEW REAL ROUND ---
+            isRoundCommittedForCurrentShowdown = true
+            currentRoundState = GameRoundState.ROUND_COMMITTED
+            lastCommittedTime = now
             lastCommittedFingerprint = fingerprint
-            lastRecordedTime = currentTime
-            isAwaitingNewRoundTransition = true // Lock until table transitions to betting/idle
 
-            val history = database.roundDao().getAllRoundsChronological()
-            val prediction = patternAnalyzer.calculateStatisticalPrediction(history)
-            val isCorrect = winner.equals(prediction.mostLikely, ignoreCase = true)
+            val historyBefore = database.roundDao().getAllRoundsChronological()
+            val priorPrediction = patternAnalyzer.calculateStatisticalPrediction(historyBefore)
+            val isPredictionCorrect = winner.equals(priorPrediction.mostLikely, ignoreCase = true)
 
             val maxSeq = database.roundDao().getMaxSequenceNumber() ?: 0L
             val nextSeq = maxSeq + 1L
+            lastRecordedRoundSeq = nextSeq
 
             val newRound = RoundEntity(
                 roundSequenceNumber = nextSeq,
-                timestamp = currentTime,
+                timestamp = now,
                 card1 = recognition.card1,
                 card2 = recognition.card2,
                 card3 = recognition.card3,
                 detectionStatus = recognition.detectionStatus,
                 actualWinner = winner,
-                predictedWinner = prediction.mostLikely,
-                predictedProbA = prediction.probA,
-                predictedProbB = prediction.probB,
-                predictedProbC = prediction.probC,
-                predictionCorrect = isCorrect,
-                historicalAccuracyAtRound = prediction.walkForwardAccuracy,
-                brierScoreAtRound = prediction.brierScore,
+                predictedWinner = priorPrediction.mostLikely,
+                predictedProbA = priorPrediction.probA,
+                predictedProbB = priorPrediction.probB,
+                predictedProbC = priorPrediction.probC,
+                predictionCorrect = isPredictionCorrect,
+                historicalAccuracyAtRound = priorPrediction.walkForwardAccuracy,
+                brierScoreAtRound = priorPrediction.brierScore,
                 source = "AUTO_CAPTURE",
                 fingerprint = fingerprint
             )
 
-            database.roundDao().insertRound(newRound)
-            Log.i(TAG, "Recorded Real Round #$nextSeq: Winner Spot $winner (Predicted: Spot ${prediction.mostLikely})")
+            val insertedDbId = database.roundDao().insertRound(newRound)
 
-            // Update predictions for the NEXT round
-            val updatedHistory = database.roundDao().getAllRoundsChronological()
-            val nextPred = patternAnalyzer.calculateStatisticalPrediction(updatedHistory)
-            currentPredictedWinner = nextPred.mostLikely
-            currentProbA = nextPred.probA
-            currentProbB = nextPred.probB
-            currentProbC = nextPred.probC
+            // --- RECALCULATE PREDICTIONS FOR NEXT ROUND WITH FRESH DATABASE DATA ---
+            val freshHistory = database.roundDao().getAllRoundsChronological()
+            val totalReal = freshHistory.count { it.source == "AUTO_CAPTURE" }
+            val nextPrediction = patternAnalyzer.calculateStatisticalPrediction(freshHistory)
 
+            currentPredictedWinner = nextPrediction.mostLikely
+            currentProbA = nextPrediction.probA
+            currentProbB = nextPrediction.probB
+            currentProbC = nextPrediction.probC
+
+            val timeStr = timeFormat.format(Date(now))
+            latestAuditLogString = "Audit [$timeStr]: State=COMMITTED | Winner=$winner | DbId=$insertedDbId | Real=$totalReal | Next=Spot $currentPredictedWinner ($currentProbA%/$currentProbB%/$currentProbC%)"
+
+            // Comprehensive Debug Logging as specified in User Requirement #7
+            Log.i(
+                TAG,
+                "[SCENEBOT-ROUND-AUDIT] RoundState: ROUND_COMMITTED | DetectedWinner: $winner | DbSave: SUCCESS(id=$insertedDbId) | TotalRealRounds: $totalReal | Timestamp: $timeStr | Prob: A=${nextPrediction.probA}% B=${nextPrediction.probB}% C=${nextPrediction.probC}% | MostLikely: Spot ${nextPrediction.mostLikely}"
+            )
+
+            // Refresh UI immediately
             refreshExpandedUi()
         }
     }
@@ -406,15 +480,23 @@ class FloatingSceneService : Service() {
         serviceScope.launch(Dispatchers.IO) {
             val history = database.roundDao().getAllRoundsChronological()
             val totalCount = history.size
-            val realCount = history.count { it.source != "SIMULATION" }
+            val realCount = history.count { it.source == "AUTO_CAPTURE" }
             val prediction = patternAnalyzer.calculateStatisticalPrediction(history)
             val latest = history.lastOrNull()
 
+            val displayRoundNum = if (latest != null) latest.roundSequenceNumber + 1 else 1L
+            val isBetting = (currentRoundState == GameRoundState.BETTING_ACTIVE)
+            val roundTitle = if (isBetting) {
+                "Round #$displayRoundNum (Betting Time)"
+            } else {
+                "Round #$displayRoundNum (Live)"
+            }
+
             serviceScope.launch(Dispatchers.Main) {
-                view.findViewById<TextView>(R.id.tv_round_count)?.text = "Round #${totalCount + 1} (Live)"
+                view.findViewById<TextView>(R.id.tv_round_count)?.text = roundTitle
                 latest?.let {
                     view.findViewById<TextView>(R.id.tv_current_cards)?.text =
-                        "Last #${it.roundSequenceNumber}: Winner Spot ${it.actualWinner} (${it.card1})"
+                        "Last Round #${it.roundSequenceNumber}: Winner Spot ${it.actualWinner} (${it.card1})"
                 }
 
                 view.findViewById<TextView>(R.id.tv_possible_a)?.text = "Spot A: ${prediction.probA}%"
@@ -425,10 +507,16 @@ class FloatingSceneService : Service() {
                 view.findViewById<ProgressBar>(R.id.progress_b)?.progress = prediction.probB
                 view.findViewById<ProgressBar>(R.id.progress_c)?.progress = prediction.probC
 
-                view.findViewById<TextView>(R.id.tv_most_likely)?.text =
-                    "Most Likely: Spot ${prediction.mostLikely} (${prediction.confidence}%)"
+                val mostLikelyText = if (isBetting) {
+                    "★ CURRENT BETTING SIGNAL: Spot ${prediction.mostLikely} (${prediction.confidence}%)"
+                } else {
+                    "Next Round Signal: Spot ${prediction.mostLikely} (${prediction.confidence}%)"
+                }
+                view.findViewById<TextView>(R.id.tv_most_likely)?.text = mostLikelyText
+
+                val timeStr = timeFormat.format(Date(prediction.calculationTimestamp))
                 view.findViewById<TextView>(R.id.tv_data_status)?.text =
-                    "Data: $realCount Real Observed Rounds ($totalCount total)"
+                    "Data: $realCount Real Observed Rounds ($totalCount total) | Updated: $timeStr"
 
                 val accStr = if (prediction.walkForwardAccuracy > 0f) {
                     "${String.format("%.1f", prediction.walkForwardAccuracy)}%"
@@ -438,6 +526,8 @@ class FloatingSceneService : Service() {
                 view.findViewById<TextView>(R.id.tv_verified_accuracy)?.text = "Verified Accuracy: $accStr"
                 view.findViewById<TextView>(R.id.tv_brier_score)?.text =
                     "Brier Score: ${String.format("%.3f", prediction.brierScore)} (Baseline: 0.667)"
+
+                view.findViewById<TextView>(R.id.tv_debug_audit)?.text = latestAuditLogString
             }
         }
     }

@@ -204,6 +204,16 @@
         android:textSize="10sp"
         android:layout_marginTop="1dp" />
 
+    <TextView
+        android:id="@+id/tv_debug_audit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Audit: State: IDLE | Winner: None | Real: 0"
+        android:textColor="#38BDF8"
+        android:textSize="9sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="4dp" />
+
     <!-- Action Buttons -->
     <LinearLayout
         android:layout_width="match_parent"

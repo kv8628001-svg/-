@@ -2,8 +2,10 @@ package com.scenebot.app.vision
 
 import com.scenebot.app.rules.Card
 import com.scenebot.app.rules.GoldenFlowerRules
+import com.scenebot.app.service.GameRoundState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CardDetectionContractTest {
@@ -25,13 +27,28 @@ class CardDetectionContractTest {
         val lineB = "SPOT B WIN"
         val lineC = "PLAYER C VICTORY"
 
-        val matchA = Regex("(?:WIN|WINNER|VICTORY|WON|BEST)\\s*[:\\-]?\\s*A\\b|\\bA\\s*(?:WIN|WINNER|VICTORY|WON)").containsMatchIn(lineA)
-        val matchB = Regex("(?:WIN|WINNER|VICTORY|WON|BEST)\\s*[:\\-]?\\s*B\\b|\\bB\\s*(?:WIN|WINNER|VICTORY|WON)").containsMatchIn(lineB)
-        val matchC = Regex("(?:WIN|WINNER|VICTORY|WON|BEST)\\s*[:\\-]?\\s*C\\b|\\bC\\s*(?:WIN|WINNER|VICTORY|WON)").containsMatchIn(lineC)
+        val matchA = Regex("(?:WIN|WINNER|VICTORY|WON|BEST|CHAMPION)\\s*[:\\-]?\\s*A\\b|\\bA\\s*(?:WIN|WINNER|VICTORY|WON|CHAMPION)|PLAYER\\s*A|SPOT\\s*A\\s*WIN|A\\s*[胜赢]").containsMatchIn(lineA)
+        val matchB = Regex("(?:WIN|WINNER|VICTORY|WON|BEST|CHAMPION)\\s*[:\\-]?\\s*B\\b|\\bB\\s*(?:WIN|WINNER|VICTORY|WON|CHAMPION)|PLAYER\\s*B|SPOT\\s*B\\s*WIN|B\\s*[胜赢]").containsMatchIn(lineB)
+        val matchC = Regex("(?:WIN|WINNER|VICTORY|WON|BEST|CHAMPION)\\s*[:\\-]?\\s*C\\b|\\bC\\s*(?:WIN|WINNER|VICTORY|WON|CHAMPION)|PLAYER\\s*C|SPOT\\s*C\\s*WIN|C\\s*[胜赢]").containsMatchIn(lineC)
 
-        assertEquals(true, matchA)
-        assertEquals(true, matchB)
-        assertEquals(true, matchC)
+        assertTrue(matchA)
+        assertTrue(matchB)
+        assertTrue(matchC)
+    }
+
+    @Test
+    fun testChineseWinnerKeywordsMatch() {
+        val lineA = "A胜"
+        val lineB = "B赢"
+        val lineC = "C胜"
+
+        val matchA = Regex("A\\s*[胜赢]").containsMatchIn(lineA)
+        val matchB = Regex("B\\s*[胜赢]").containsMatchIn(lineB)
+        val matchC = Regex("C\\s*[胜赢]").containsMatchIn(lineC)
+
+        assertTrue(matchA)
+        assertTrue(matchB)
+        assertTrue(matchC)
     }
 
     @Test
@@ -45,5 +62,14 @@ class CardDetectionContractTest {
 
         val winner = GoldenFlowerRules.compareHands(handA, handB, handC)
         assertEquals("Flush in Hand A must beat Pair in Hand B and High Card in C", "A", winner)
+    }
+
+    @Test
+    fun testGameRoundStateEnumValues() {
+        val states = GameRoundState.values()
+        assertEquals(5, states.size)
+        assertTrue(states.contains(GameRoundState.BETTING_ACTIVE))
+        assertTrue(states.contains(GameRoundState.SHOWDOWN_REVEAL))
+        assertTrue(states.contains(GameRoundState.ROUND_COMMITTED))
     }
 }

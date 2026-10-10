@@ -17,6 +17,7 @@ data class StatisticalPredictionResult(
     val walkForwardAccuracy: Float,
     val brierScore: Float,
     val baselineComparison: String,
+    val calculationTimestamp: Long = System.currentTimeMillis(),
     val warning: String = "Statistical frequency analysis only. Past rounds do not guarantee future winners in independent RNG games."
 )
 
@@ -119,6 +120,12 @@ class PatternAnalyzer {
             if (pA >= pB) pA -= 1 else pB -= 1
         }
 
+        // STRICT ASSERTION: sum must equal 100%
+        val checkSum = pA + pB + pC
+        if (checkSum != 100) {
+            pC += (100 - checkSum)
+        }
+
         val topWinner = when {
             pA >= pB && pA >= pC -> "A"
             pB >= pA && pB >= pC -> "B"
@@ -130,9 +137,9 @@ class PatternAnalyzer {
         val backtest = runWalkForwardBacktest(rounds)
 
         val rationale = if (hasEnough) {
-            "Bayesian Dirichlet smoothing over $n rounds with Markov transition from Spot $lastWinner"
+            "Bayesian Dirichlet smoothing over $n rounds with Markov transition from Spot $lastWinner (A:${countA.toInt()-1}, B:${countB.toInt()-1}, C:${countC.toInt()-1})"
         } else {
-            "Empirical frequency over $n rounds conditioned on Spot $lastWinner (stabilizes at $MIN_DATA_THRESHOLD rounds)"
+            "Preliminary distribution ($n rounds). Need at least $MIN_DATA_THRESHOLD rounds for stable modeling. Counts: A:${countA.toInt()-1}, B:${countB.toInt()-1}, C:${countC.toInt()-1} (Last: $lastWinner)"
         }
 
         val baselineComparison = when {

@@ -3,6 +3,7 @@ package com.scenebot.app.analysis
 import com.scenebot.app.data.RoundEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -14,6 +15,48 @@ class PatternAnalyzerTest {
     @Before
     fun setUp() {
         analyzer = PatternAnalyzer()
+    }
+
+    @Test
+    fun testDynamicPredictionRecalculationOnEveryNewRound() {
+        // Scenario reported by user: Started with 2 rounds [B, C] -> gives 27%, 37%, 36%
+        val history = mutableListOf(
+            createDummyRound(1, "B"),
+            createDummyRound(2, "C")
+        )
+        val pred1 = analyzer.calculateStatisticalPrediction(history)
+        assertEquals(27, pred1.probA)
+        assertEquals(37, pred1.probB)
+        assertEquals(36, pred1.probC)
+        assertEquals(100, pred1.probA + pred1.probB + pred1.probC)
+
+        // Round 3 arrives: Spot A wins!
+        history.add(createDummyRound(3, "A"))
+        val pred2 = analyzer.calculateStatisticalPrediction(history)
+        // Must dynamically recalculate and NOT remain 27%, 37%, 36%
+        assertNotEquals(27, pred2.probA)
+        assertEquals(33, pred2.probA)
+        assertEquals(33, pred2.probB)
+        assertEquals(34, pred2.probC)
+        assertEquals(100, pred2.probA + pred2.probB + pred2.probC)
+
+        // Round 4 arrives: Spot A wins again!
+        history.add(createDummyRound(4, "A"))
+        val pred3 = analyzer.calculateStatisticalPrediction(history)
+        // Probabilities must shift toward A
+        assertEquals(46, pred3.probA)
+        assertEquals(27, pred3.probB)
+        assertEquals(27, pred3.probC)
+        assertEquals("A", pred3.mostLikely)
+        assertEquals(100, pred3.probA + pred3.probB + pred3.probC)
+
+        // Round 5 arrives: Spot B wins!
+        history.add(createDummyRound(5, "B"))
+        val pred4 = analyzer.calculateStatisticalPrediction(history)
+        assertEquals(31, pred4.probA)
+        assertEquals(31, pred4.probB)
+        assertEquals(38, pred4.probC)
+        assertEquals(100, pred4.probA + pred4.probB + pred4.probC)
     }
 
     @Test
@@ -31,7 +74,6 @@ class PatternAnalyzerTest {
             createDummyRound(10, "A"),
             createDummyRound(11, "B")
         )
-
         val result = analyzer.calculateStatisticalPrediction(dummyRounds)
         val sum = result.probA + result.probB + result.probC
         assertEquals("Probabilities must sum to exactly 100", 100, sum)
@@ -47,7 +89,6 @@ class PatternAnalyzerTest {
             createDummyRound(2, "B"),
             createDummyRound(3, "C")
         )
-
         val result = analyzer.calculateStatisticalPrediction(fewRounds)
         assertFalse("Should not have enough data when < 10 rounds", result.hasEnoughData)
         assertTrue("Data status must mention insufficient", result.dataStatus.contains("Insufficient Data"))
@@ -64,10 +105,8 @@ class PatternAnalyzerTest {
 
     @Test
     fun testWalkForwardBacktestCalculatesCorrectMetrics() {
-        // Create 20 rounds alternating A and B
         val rounds = (1..20).map { createDummyRound(it.toLong(), if (it % 2 == 0) "A" else "B") }
         val report = analyzer.runWalkForwardBacktest(rounds)
-
         assertTrue("Total tested must be > 0", report.totalTested > 0)
         assertTrue("Accuracy must be between 0 and 100", report.accuracyPercentage in 0f..100f)
         assertTrue("Brier score must be non-negative", report.brierScore >= 0f)
@@ -75,7 +114,6 @@ class PatternAnalyzerTest {
 
     @Test
     fun testBaselineComparisonAccountsForUniformOutcomes() {
-        // Equal distribution of A, B, C
         val rounds = (1..30).map {
             val spot = when (it % 3) {
                 0 -> "A"
@@ -85,8 +123,10 @@ class PatternAnalyzerTest {
             createDummyRound(it.toLong(), spot)
         }
         val result = analyzer.calculateStatisticalPrediction(rounds)
-        assertTrue("Summary or baseline comparison should indicate independence or baseline",
-            result.baselineComparison.contains("Baseline") || result.baselineComparison.contains("33.3%"))
+        assertTrue(
+            "Summary or baseline comparison should indicate independence or baseline",
+            result.baselineComparison.contains("Baseline") || result.baselineComparison.contains("33.3%")
+        )
     }
 
     private fun createDummyRound(seq: Long, winner: String): RoundEntity {

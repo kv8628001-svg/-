@@ -20,9 +20,10 @@ data class CardRecognitionResult(
     val card3: String,             // Spot C Hand / Cards
     val detectedWinner: String?,   // "A", "B", "C" or null
     val detectionStatus: String,   // "Verified", "Showdown Detected", "Betting Phase", "Observing Table", "Screen Too Dark"
-    val gamePhase: String,         // "BETTING", "SHOWDOWN", "IDLE"
+    val gamePhase: String,         // "BETTING", "DEALING", "SHOWDOWN", "IDLE"
     val confidence: Float,
-    val diagnostics: String
+    val diagnostics: String,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 class CardVisionRecognizer(private val context: Context) {
@@ -91,8 +92,10 @@ class CardVisionRecognizer(private val context: Context) {
         val allText = StringBuilder()
 
         var hasBettingKeyword = false
+        var hasDealingKeyword = false
         var hasWinnerKeyword = false
         var explicitWinner: String? = null
+        var winnerByPosition: String? = null
 
         if (visionText != null) {
             for (block in visionText.textBlocks) {
@@ -112,34 +115,45 @@ class CardVisionRecognizer(private val context: Context) {
                         zoneTextC.append(" ").append(lineText)
                     }
 
-                    // Check for Betting Phase markers
+                    // Check for Betting Phase markers (English & Common Numbers & Symbols)
                     if (lineText.contains("BET") || lineText.contains("CHIP") ||
                         lineText.contains("COUNTDOWN") || lineText.contains("TIME") ||
-                        lineText.matches(Regex(".*\\b(1[0-5]|[1-9])S\\b.*"))
+                        lineText.contains("START") || lineText.contains("PLACE") ||
+                        lineText.contains("下注") || lineText.contains("请下注") ||
+                        lineText.matches(Regex(".*\\b(1[0-5]|[1-9])S?\\b.*"))
                     ) {
                         hasBettingKeyword = true
                     }
 
+                    if (lineText.contains("DEAL") || lineText.contains("STOP") ||
+                        lineText.contains("WAIT") || lineText.contains("封盘") || lineText.contains("发牌")
+                    ) {
+                        hasDealingKeyword = true
+                    }
+
                     // Check for explicit Winner patterns in line:
-                    // e.g. "WIN A", "A WIN", "WINNER B", "VICTORY C", "PLAYER A WIN"
-                    if (Regex("(?:WIN|WINNER|VICTORY|WON|BEST)\\s*[:\\-]?\\s*A\\b|\\bA\\s*(?:WIN|WINNER|VICTORY|WON)").containsMatchIn(lineText)) {
+                    // e.g. "WIN A", "A WIN", "WINNER B", "VICTORY C", "PLAYER A WIN", "SPOT B WIN"
+                    val matchA = Regex("(?:WIN|WINNER|VICTORY|WON|BEST|CHAMPION)\\s*[:\\-]?\\s*A\\b|\\bA\\s*(?:WIN|WINNER|VICTORY|WON|CHAMPION)|PLAYER\\s*A|SPOT\\s*A\\s*WIN|A\\s*[胜赢]").containsMatchIn(lineText)
+                    val matchB = Regex("(?:WIN|WINNER|VICTORY|WON|BEST|CHAMPION)\\s*[:\\-]?\\s*B\\b|\\bB\\s*(?:WIN|WINNER|VICTORY|WON|CHAMPION)|PLAYER\\s*B|SPOT\\s*B\\s*WIN|B\\s*[胜赢]").containsMatchIn(lineText)
+                    val matchC = Regex("(?:WIN|WINNER|VICTORY|WON|BEST|CHAMPION)\\s*[:\\-]?\\s*C\\b|\\bC\\s*(?:WIN|WINNER|VICTORY|WON|CHAMPION)|PLAYER\\s*C|SPOT\\s*C\\s*WIN|C\\s*[胜赢]").containsMatchIn(lineText)
+
+                    if (matchA && explicitWinner == null) {
                         explicitWinner = "A"
                         hasWinnerKeyword = true
-                    } else if (Regex("(?:WIN|WINNER|VICTORY|WON|BEST)\\s*[:\\-]?\\s*B\\b|\\bB\\s*(?:WIN|WINNER|VICTORY|WON)").containsMatchIn(lineText)) {
+                    } else if (matchB && explicitWinner == null) {
                         explicitWinner = "B"
                         hasWinnerKeyword = true
-                    } else if (Regex("(?:WIN|WINNER|VICTORY|WON|BEST)\\s*[:\\-]?\\s*C\\b|\\bC\\s*(?:WIN|WINNER|VICTORY|WON)").containsMatchIn(lineText)) {
+                    } else if (matchC && explicitWinner == null) {
                         explicitWinner = "C"
                         hasWinnerKeyword = true
-                    } else if (lineText.contains("WIN") || lineText.contains("VICTORY") || lineText.contains("WON")) {
+                    } else if (lineText.contains("WIN") || lineText.contains("WINNER") || lineText.contains("VICTORY") || lineText.contains("WON") || lineText.contains("胜") || lineText.contains("赢")) {
                         hasWinnerKeyword = true
-                        // If general WIN keyword found, check which zone the box is in!
-                        if (centerX < cropWidth * 0.36f && explicitWinner == null) {
-                            explicitWinner = "A"
-                        } else if (centerX < cropWidth * 0.64f && explicitWinner == null) {
-                            explicitWinner = "B"
-                        } else if (explicitWinner == null) {
-                            explicitWinner = "C"
+                        if (centerX < cropWidth * 0.36f && winnerByPosition == null) {
+                            winnerByPosition = "A"
+                        } else if (centerX < cropWidth * 0.64f && winnerByPosition == null) {
+                            winnerByPosition = "B"
+                        } else if (winnerByPosition == null) {
+                            winnerByPosition = "C"
                         }
                     }
                 }
@@ -160,14 +174,18 @@ class CardVisionRecognizer(private val context: Context) {
         cardRegionCrop.recycle()
 
         // 6. Winner Resolution Strategy:
-        // Priority 1: Explicit OCR Winner Announcement ("WINNER A", "B WIN", etc.)
-        // Priority 2: Golden Flower Rule Comparison if hand ranks are recognized
-        // Priority 3: Visual Gold Highlight / Winning Crown Luminance Peak
+        // Priority 1: Explicit OCR Winner Announcement ("WINNER A", "B WIN", etc.) -> 0.95
+        // Priority 2: Winner by Winner Badge Bounding Box Position (Left=A, Center=B, Right=C) -> 0.88
+        // Priority 3: Golden Flower Rule Comparison if hands of A, B, C are evaluated -> 0.85
+        // Priority 4: Visual Gold Highlight / Winning Spot Brightness -> 0.72
         var finalWinner: String? = explicitWinner
         var confidence = 0.50f
 
         if (finalWinner != null) {
             confidence = 0.95f
+        } else if (winnerByPosition != null) {
+            finalWinner = winnerByPosition
+            confidence = 0.88f
         } else if (hasWinnerKeyword && spotMetrics.brightestSpot != null) {
             finalWinner = spotMetrics.brightestSpot
             confidence = 0.82f
@@ -179,34 +197,32 @@ class CardVisionRecognizer(private val context: Context) {
             confidence = 0.72f
         }
 
-        // Determine Game Phase & Status
+        // Determine Game Phase & Status cleanly:
         val phase: String
         val status: String
-        val isVerified: Boolean
 
         if (finalWinner != null && confidence >= 0.70f) {
             phase = "SHOWDOWN"
-            status = "Verified"
-            isVerified = true
+            status = "Verified Winner: Spot $finalWinner"
         } else if (hasBettingKeyword) {
             phase = "BETTING"
-            status = "Betting Phase"
-            isVerified = false
-        } else if (spotMetrics.hasCardsVisible || handDescA.score > 0 || handDescB.score > 0 || handDescC.score > 0) {
+            status = "Betting Active (Place Bets)"
+        } else if (hasDealingKeyword) {
+            phase = "DEALING"
+            status = "Dealing Cards..."
+        } else if (handDescA.score > 0 || handDescB.score > 0 || handDescC.score > 0) {
             phase = "SHOWDOWN"
-            status = if (finalWinner != null) "Showdown Detected" else "Result Not Verified"
-            isVerified = (finalWinner != null && confidence >= 0.70f)
+            status = "Cards Revealed (Analyzing Winner...)"
         } else {
             phase = "IDLE"
             status = "Observing Table"
-            isVerified = false
         }
 
         val card1Display = handDescA.description
         val card2Display = handDescB.description
         val card3Display = handDescC.description
 
-        val diag = "Phase: $phase | Winner: ${finalWinner ?: "None"} (${(confidence * 100).toInt()}%) | Text: ${allText.take(40)}"
+        val diag = "Phase: $phase | Winner: ${finalWinner ?: "None"} (${(confidence * 100).toInt()}%) | Text: ${allText.take(45)}"
 
         return CardRecognitionResult(
             card1 = card1Display,
@@ -260,7 +276,7 @@ class CardVisionRecognizer(private val context: Context) {
         var lumA = 0L; var countA = 0
         var lumB = 0L; var countB = 0
         var lumC = 0L; var countC = 0
-        var whiteCardPixels = 0
+        var highSatGoldPixels = 0
 
         for (y in 0 until h step 6) {
             for (x in 0 until w step 6) {
@@ -270,9 +286,9 @@ class CardVisionRecognizer(private val context: Context) {
                 val b = Color.blue(pixel)
                 val lum = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
 
-                // High brightness + low saturation indicates white face-up card surface
-                if (lum > 180 && Math.abs(r - g) < 25 && Math.abs(g - b) < 25) {
-                    whiteCardPixels++
+                // Gold/Yellow winner highlight detection: high red+green, lower blue
+                if (r > 190 && g > 150 && b < 100) {
+                    highSatGoldPixels++
                 }
 
                 if (x < zoneW) {
@@ -298,11 +314,11 @@ class CardVisionRecognizer(private val context: Context) {
             else -> "C"
         }
 
-        // In Poppo Live showdown, winning house has glowing gold highlight / victory aura
-        val isSignificant = (maxLum - minLum > 28) && (maxLum > 75)
-        val hasCards = whiteCardPixels > 30
+        // In Poppo Live showdown, winning spot has distinct glowing highlight
+        val isSignificant = (maxLum - minLum > 30) && (maxLum > 80)
+        val hasGoldBadge = highSatGoldPixels > 50
 
-        return SpotMetrics(brightest, isSignificant, hasCards)
+        return SpotMetrics(brightest, isSignificant || hasGoldBadge, false)
     }
 
     private fun extractHandDescription(zoneText: String, defaultSpotLabel: String): com.scenebot.app.rules.HandEvaluation {
@@ -328,7 +344,6 @@ class CardVisionRecognizer(private val context: Context) {
                 com.scenebot.app.rules.HandEvaluation(HandType.HIGH_CARD, 100000, "$defaultSpotLabel: High Card")
             }
             else -> {
-                // Try to parse raw card numbers or default to standard label
                 val cards = mutableListOf<Card>()
                 val matches = Regex("\\b([AKQJ]|10|[2-9])\\b").findAll(t)
                 for (m in matches.take(3)) {
@@ -346,7 +361,7 @@ class CardVisionRecognizer(private val context: Context) {
                 if (cards.size >= 3) {
                     GoldenFlowerRules.evaluate(cards)
                 } else {
-                    com.scenebot.app.rules.HandEvaluation(HandType.HIGH_CARD, 0, "$defaultSpotLabel: Cards Observed")
+                    com.scenebot.app.rules.HandEvaluation(HandType.HIGH_CARD, 0, "$defaultSpotLabel: Waiting")
                 }
             }
         }
